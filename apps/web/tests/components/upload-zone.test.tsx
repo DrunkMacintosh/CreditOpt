@@ -243,6 +243,59 @@ describe("UploadZone", () => {
     expect(uploadResumableMock.mock.calls[1][2]).toMatchObject({ resumeUrl });
   });
 
+  it.each([
+    new DirectStorageError(404),
+    new DirectStorageError(410),
+    new DirectStorageError(403),
+    new DirectStorageError(0, "TUS_OFFSET_INVALID"),
+  ])(
+    "discards a terminal TUS resume session and requests a new intent on retry %#",
+    async (terminalError) => {
+      const resumeUrl = "https://storage.invalid/tus/upload-revoked";
+      const replacementIntent: UploadIntentDto = {
+        ...resumableIntent,
+        intentId: "intent-replacement",
+      };
+      const api = {
+        createUploadIntent: vi
+          .fn()
+          .mockResolvedValueOnce(resumableIntent)
+          .mockResolvedValueOnce(replacementIntent),
+        completeUploadIntent: vi.fn().mockResolvedValue(completed),
+      };
+      const uploadResumableMock = vi
+        .fn()
+        .mockImplementationOnce(
+          async (
+            _intent: unknown,
+            _file: File,
+            options: ResumableUploadOptions,
+          ) => {
+            options.onResumeUrl?.(resumeUrl);
+            throw terminalError;
+          },
+        )
+        .mockResolvedValueOnce(undefined);
+      const transport: DirectUploadTransport = {
+        uploadSigned: vi.fn(),
+        uploadResumable: uploadResumableMock,
+      };
+
+      render(<UploadZone api={api} canUpload caseId="case-1" transport={transport} />);
+      fireEvent.change(screen.getByLabelText("Chọn tài liệu"), {
+        target: { files: [pdfFile()] },
+      });
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Thử lại ho-so-tong-hop.pdf" }),
+      );
+
+      expect(await screen.findByText("Đang chờ xử lý")).toBeVisible();
+      expect(api.createUploadIntent).toHaveBeenCalledTimes(2);
+      expect(uploadResumableMock.mock.calls[1][0]).toBe(replacementIntent);
+      expect(uploadResumableMock.mock.calls[1][2].resumeUrl).toBeUndefined();
+    },
+  );
+
   it("renders a backend task that requires manual review", async () => {
     const api = {
       createUploadIntent: vi.fn().mockResolvedValue(signedIntent),

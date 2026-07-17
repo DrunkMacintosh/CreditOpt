@@ -10,6 +10,7 @@ import {
   type UploadItem,
   uploadFromIntent,
 } from "../../lib/upload/upload-machine";
+import { DirectStorageError } from "../../lib/upload/signed-upload";
 import { UploadProgress } from "./upload-progress";
 
 const ACCEPTED_CONTENT = new Map([
@@ -131,6 +132,12 @@ export function UploadZone({
       });
       if (controller.signal.aborted) throw new DOMException("Cancelled", "AbortError");
     } catch (error) {
+      if (
+        session.intent.mode === "RESUMABLE" &&
+        isTerminalResumableSessionError(error)
+      ) {
+        sessions.current.delete(id);
+      }
       handleFailure(id, error, controller);
       return;
     } finally {
@@ -304,6 +311,14 @@ function randomIdempotencyKey(): string {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
+}
+
+function isTerminalResumableSessionError(error: unknown): boolean {
+  return (
+    error instanceof DirectStorageError &&
+    ([401, 403, 404, 410].includes(error.status) ||
+      ["TUS_OFFSET_INVALID", "TUS_LOCATION_INVALID"].includes(error.code))
+  );
 }
 
 class ExpiredUploadError extends Error {}
