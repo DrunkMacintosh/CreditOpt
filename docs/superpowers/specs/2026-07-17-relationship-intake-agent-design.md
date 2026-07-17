@@ -26,7 +26,12 @@ The central product object is the Credit Case Digital Twin. Chat history is not 
 - Confirmation occurs document by document before confirmed facts enter authoritative case state.
 - Conflicts are surfaced immediately.
 - Evidence gaps are shown progressively as provisional items and finalized only after the officer marks the upload set complete.
-- FPT AI Factory in Southeast Asia is the target private inference infrastructure.
+- Vercel hosts only the Vietnamese frontend; it does not orchestrate document processing.
+- Cloud Run hosts the FastAPI API, deterministic workflow authority, provider gateway, and an asynchronous `creditops-worker` Job.
+- Supabase PostgreSQL, Queues, private Storage, and pgvector hold shared state, checkpoints, durable work, documents, retrieval metadata, and audit records.
+- FPT AI Factory supplies managed inference only; the product does not require a project-operated GPU or vLLM server.
+- Browser document uploads use a backend-created upload intent with either a short-lived signed upload or an authenticated resumable upload protected by Storage RLS; document bodies do not pass through Vercel Functions.
+- The earlier FPT H100 VM and locally hosted vLLM design is superseded before implementation.
 - Initial specialization uses a benchmark-selected base model, role instructions, authorized tools, schemas, and retrieval rather than fine-tuning.
 - Any later fine-tuning is benchmark-gated and limited to a measured, stable task failure.
 - Development and evaluation use fully invented documents and identities. No preloaded case, seeded answers, or demo-only execution path appears in the product.
@@ -34,22 +39,24 @@ The central product object is the Credit Case Digital Twin. Chat history is not 
 
 ### PROPOSED
 
-- A Next.js and TypeScript frontend, FastAPI and Pydantic backend, PostgreSQL with pgvector, S3-compatible object storage, and a provider-neutral OpenAI-compatible model gateway.
+- Next.js, React, and TypeScript implementation details on Vercel; FastAPI and Pydantic implementation details on Cloud Run; and a provider-neutral structured model gateway.
 - Explicit relational evidence-edge records in PostgreSQL rather than a separate graph database in the first release.
 - A deterministic intake state machine rather than an autonomous agent loop.
 - Two bounded retrieval paths: case-evidence RAG and approved policy/checklist RAG.
 - PDF, PNG, JPEG, DOCX, and XLSX as the initial accepted file families, subject to safe parsing and size limits.
+- A benchmark candidate stack consisting of Qwen3-30B-A3B instruction/chat for main reasoning if available, SaoLa3.1-medium 32B as a Vietnamese challenger, FPT.AI-KIE-v1.7, FPT.AI-Table-Parsing-v1.1, Qwen2.5-VL-7B-Instruct, FPT.AI-e5-large compared with Vietnamese_Embedding, and optional bge-reranker-v2-m3 only when measured gains justify it.
 
 ### ASSUMPTION
 
 - The assigned intake officer represents the conceptual relationship/intake function; the official SHB role name and delegation are unavailable.
 - Vietnamese document families listed in this specification are sufficient for initial product evaluation but are not an official SHB checklist.
-- An FPT-hosted model will expose or be wrapped by a controlled OpenAI-compatible API.
+- FPT managed endpoints will expose or be wrapped by a controlled backend adapter with equivalent structured request and response contracts.
 
 ### OPEN QUESTION
 
-- The final model, OCR engine, embedding model, reranker, and document-vision model.
-- FPT AI Factory container, network, endpoint, storage, backup, identity, and monitoring capabilities.
+- The final reasoning, KIE, table, embedding, reranker, and document-vision endpoints after benchmark evaluation.
+- Exact FPT endpoint identifiers, instruction/chat capability, regional availability, quotas, retention terms, private connectivity, and monitoring.
+- Vercel, Supabase, Cloud Run, and FPT deployment regions, data-residency approval, cross-border data flows, backup and restore controls, identity integration, and security acceptance.
 - Official SHB document checklists, policy corpus, role names, state names, retention rules, access model, and memo format.
 - Production data authorization and security acceptance. The current project remains synthetic-only and cannot claim production readiness.
 - Exact file-size, page-count, concurrency, latency, and evaluation thresholds; these must be benchmarked and recorded before release acceptance.
@@ -77,45 +84,59 @@ The central product object is the Credit Case Digital Twin. Chat history is not 
 ## 4. Architecture
 
 ```text
-Vietnamese Next.js interface
-  -> FastAPI application API
-  -> deterministic intake workflow
-  -> document ingestion and parsing
-  -> Intake Agent execution
-  -> dual retrieval service
+Vietnamese Next.js interface on Vercel
+  -> FastAPI application API on Cloud Run
+  -> deterministic intake workflow and authorization
+  -> Supabase PostgreSQL, Queues, Storage, and pgvector
+  -> Cloud Run `creditops-worker` Job
+  -> document ingestion, retrieval, and Intake Agent execution
   -> provider-neutral model gateway
-  -> FPT AI Factory model endpoint
-
-Application API
-  -> PostgreSQL case state, EvidenceGraph, retrieval metadata, and audit
-  -> S3-compatible immutable document storage
+  -> FPT managed inference endpoints
 ```
 
 ### 4.1 Frontend
 
-The browser communicates only with the application backend. It never receives model or storage credentials and never calls the FPT model-serving port directly.
+The browser communicates with the Cloud Run application API for all case and workflow actions. It never receives model credentials, Supabase service-role credentials, or FPT credentials and never calls an FPT endpoint directly.
+
+For a document upload, the API validates case authority and creates an expiring `UploadIntent` containing the case, officer, object key, allowed type, and size ceiling. The browser receives either a signed upload operation for a normal upload or an authenticated resumable-upload contract protected by Storage RLS. It sends the document body directly to private Supabase Storage, then asks the API to verify the object against the intent and register its immutable document version.
 
 The interface is case-centered and supports upload, processing status, document confirmation, conflicts, gaps, intake completion, handoff, and audit inspection. Chat is not required for the first release.
 
 ### 4.2 Application backend
 
-The backend owns authentication, authorization, assigned-officer enforcement, case state, document metadata, workflow transitions, model calls, retrieval, schema validation, confirmation, gap finalization, handoff generation, and audit events.
+The FastAPI backend on Cloud Run owns authentication-token validation, authorization, assigned-officer enforcement, case state transitions, document registration, workflow orchestration, task dispatch, model routing, retrieval, schema validation, confirmation, gap finalization, handoff generation, and audit events.
+
+Browser-facing requests do not remain open for full document processing. The API creates a durable task and returns an asynchronous status contract.
 
 ### 4.3 Intake workflow
 
 The intake process is an explicit deterministic state machine. Model output may propose classifications and facts but cannot transition a document to `CONFIRMED`, finalize the case, close a gap, or authorize communication.
 
+Supabase Queues carries task identifiers and attempt metadata. One `creditops-worker` Cloud Run Job execution claims one leased task in the first release, checks that its input case and document versions remain current, processes one bounded stage or resumable sequence, writes its output and checkpoint durably, and acknowledges the queue message only after success. Queue messages never contain document bodies or credentials.
+
+The API requests a worker execution after enqueueing. Cloud Scheduler also requests one execution every minute; an execution with no eligible work exits successfully. Cloud Run platform retries are disabled for the first release because attempt count, bounded retry eligibility, failure reason, and terminal status are stored in Supabase. Parallel executions remain disabled until one-at-a-time correctness tests pass.
+
 ### 4.4 Model gateway
 
-The gateway exposes a provider-neutral structured contract. It records model identity, role, prompt version, schema version, request metadata, latency, validation outcome, and usage. It has no hidden public-model fallback. If the configured FPT endpoint is unavailable, processing pauses visibly.
+The gateway exposes provider-neutral structured contracts for reasoning, KIE, table extraction, vision, embeddings, and optional reranking. It records endpoint and model identity, role, prompt version, schema version, request metadata, latency, validation outcome, and usage. It has no hidden public-model fallback. If the configured FPT endpoint is unavailable, processing pauses visibly.
 
 ### 4.5 Storage
 
-Original files are immutable and content-addressed. Derived OCR text, page images, embeddings, model candidates, and officer corrections are separately versioned. Local NVMe is not the only authoritative store until its durability is confirmed.
+Supabase PostgreSQL is authoritative for structured case state, workflow checkpoints, EvidenceGraph records, retrieval metadata, and audit. Private Supabase Storage holds immutable content-addressed originals and separately versioned derived OCR text, page images, and safe renderings. Model candidates and officer corrections remain structured, versioned records rather than changes to source objects.
+
+Database backup does not substitute for object backup. Object versioning, backup, restore testing, retention, and deletion controls must be approved separately before real banking data is permitted.
 
 ### 4.6 EvidenceGraph
 
 The first release uses PostgreSQL entities plus explicit typed edge records. This preserves graph-like traversal while avoiding a second database before access patterns and scale justify it.
+
+### 4.7 Deployment and service identity
+
+Vercel, Cloud Run, Supabase, and FPT each receive separate least-privilege identities. Frontend environment variables contain no privileged keys. Cloud Run is the only component authorized to use Supabase service credentials or FPT credentials. Provider region, private connectivity, egress control, and workforce identity integration are release gates rather than assumptions.
+
+### 4.8 Processing checkpoints
+
+The default document path is `REGISTERED -> SECURITY_VALIDATED -> PARSED -> CLASSIFIED -> EXTRACTED -> INDEXED -> READY_FOR_OFFICER_REVIEW`. A task may enter `RETRY_WAIT`, `FAILED_MANUAL_REVIEW`, or `SUPERSEDED`. Retries resume from the latest valid checkpoint, and stale work cannot write to a newer case or document version.
 
 ## 5. Dual RAG design
 
@@ -134,6 +155,8 @@ The subsystem abstains if no authorized corpus exists, no applicable passage is 
 ### 5.3 Retrieval authority boundary
 
 Retrieved text is untrusted evidence. It cannot confirm a fact, grant a permission, change workflow state, close a gap, authorize a customer request, or make a credit decision.
+
+The default retrieval path uses Supabase PostgreSQL filters, lexical search, and pgvector embeddings. A reranker is not required for the first deployment and is enabled only if held-out Vietnamese banking tests show a material citation-precision or evidence-recall gain that outweighs added latency and cost.
 
 ## 6. Supported document scope
 
@@ -201,6 +224,7 @@ The handoff state is `READY_FOR_SPECIALIST_REVIEW`. It is not a credit decision 
 Core records are:
 
 - `CreditCase` and versioned `FinancingRequest`;
+- `UploadIntent` binding an expiring object key, case, assigned officer, accepted type, and size ceiling;
 - `Document` and immutable `DocumentVersion`;
 - `PageRegion` with page and bounding coordinates;
 - `CandidateFact` from a deterministic tool or model execution;
@@ -257,6 +281,8 @@ Core records are:
 - Assigned-officer enforcement for fact confirmation and correction.
 - Encryption in transit and at rest.
 - Backend-only secrets and model credentials.
+- Short-lived, case-scoped upload authorization and post-upload object verification.
+- Separate service identities for Vercel, Cloud Run, Supabase, and FPT.
 - Immutable originals separated from derived artifacts.
 - File validation, malware scanning, resource limits, and content hashing.
 - Case-, version-, permission-, and effective-date-filtered retrieval.
@@ -271,14 +297,19 @@ Retention and deletion controls are configurable but cannot be declared complian
 - Schema-invalid model output is rejected and receives bounded retries.
 - Unsupported candidates or candidates without source locations are rejected.
 - FPT endpoint failure visibly pauses work without a silent external fallback.
-- Jobs are idempotent and resumable.
+- Queue delivery may repeat; jobs are idempotent, leased, checkpointed, and resumable.
+- A worker crash leaves recoverable work after lease expiry.
+- A stale task cannot write to a newer case or document version.
+- Retry exhaustion creates a visible manual-review state.
 - Partial processing never produces confirmed facts.
 - Retrieval failure produces abstention.
 - Every error, retry, override, and recovery creates an audit event.
 
 ## 11. Model strategy
 
-One benchmark-selected Vietnamese-capable base model serves the Intake role through the FPT model gateway. Specialization comes from versioned instructions, scoped context, authorized tools, structured schemas, retrieval, and validation.
+The Intake role uses task-appropriate FPT managed endpoints through the backend gateway. Main reasoning begins with Qwen3-30B-A3B only if FPT confirms an instruction/chat endpoint with suitable structured-output behavior. SaoLa3.1-medium 32B is the Vietnamese challenger, and DeepSeek-V4-Flash remains a challenger only if a suitable FPT endpoint exists. Document processing benchmarks FPT.AI-KIE-v1.7 and FPT.AI-Table-Parsing-v1.1, with Qwen2.5-VL-7B-Instruct reserved for complex visual cases. Embedding evaluation compares FPT.AI-e5-large and Vietnamese_Embedding. bge-reranker-v2-m3 is optional rather than a default dependency.
+
+These names define the candidate set, not a production selection. Endpoint capability, data controls, Vietnamese banking quality, schema reliability, evidence grounding, latency, availability, and cost determine the recorded winner. Specialization comes from versioned instructions, scoped context, authorized tools, structured schemas, retrieval, and validation.
 
 There is no initial fine-tuning. Fine-tuning may be proposed later only when:
 
@@ -301,6 +332,7 @@ Policies and current rules remain external, versioned, retrievable, and auditabl
 5. Adversarial tests cover prompt injection, unreadable and rotated scans, duplicates, conflicts, missing pages, corrupt files, and resource limits.
 6. A blind end-to-end evaluation uses a previously unseen, fully invented Vietnamese case pack uploaded through the normal interface.
 7. A generic single-agent chatbot baseline processes the same held-out case for comparison.
+8. Infrastructure contract tests cover signed uploads, post-upload verification, queue redelivery, lease expiry, idempotent resume, stale-version rejection, provider timeout, bounded retry, backup restore, and FPT fail-closed behavior.
 
 ### 12.2 Comparison dimensions
 
@@ -356,6 +388,8 @@ This design improves alignment with the Digital Expert Agents topic by:
 ## 15. Implementation boundary for the next phase
 
 The next implementation plan covers only the shared foundation and Relationship and Intake Agent described here. It may create interfaces required by later roles, but it must not implement underwriting, legal conclusions, risk challenge, operations, or autonomous credit actions.
+
+The existing implementation plan predates the approved managed architecture and must be revised after this specification is reviewed. The revision must remove local object-storage and direct synchronous processing assumptions; add Supabase signed uploads, Queues, checkpoints, pgvector, and restore controls; add Cloud Run API and worker deployment boundaries; and retain provider-neutral FPT adapters and all human-control invariants.
 
 ## 16. Source documents
 
