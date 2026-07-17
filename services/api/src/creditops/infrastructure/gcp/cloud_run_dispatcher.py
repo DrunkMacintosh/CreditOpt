@@ -60,7 +60,12 @@ class CloudRunDispatcher(WorkerDispatcher):
         token = self._token_provider()
         if hasattr(token, "__await__"):
             token = await cast(Awaitable[str], token)
-        if not isinstance(token, str) or not token or len(token) > 4096:
+        if (
+            not isinstance(token, str)
+            or not token
+            or len(token) > 4096
+            or any(character.isspace() for character in token)
+        ):
             raise WorkerDispatchNotConfigured("Cloud Run OAuth token is invalid")
         return token
 
