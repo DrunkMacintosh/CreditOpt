@@ -22,7 +22,10 @@ def test_input_slots_only_where_expected():
     # Slots [..] are deliberate data slots (spec 3.3): metrics 13/15, team 17,
     # QR 18, screenshot labels 4/6/8. Nowhere else.
     with_slots = {s["n"] for s in SLIDES if slot_tokens(spec_strings(s))}
-    assert with_slots == {4, 6, 8, 13, 15, 17, 18}
+    # Slots may only ever appear on these slides. After the team fills real
+    # values (README step 1) some of these slides legitimately have none —
+    # check_final.py is the pre-submission authority on remaining slots.
+    assert with_slots <= {4, 6, 8, 13, 15, 17, 18}
 
 
 def test_phrasing_rule_cho_shb():

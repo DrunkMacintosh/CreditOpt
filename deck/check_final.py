@@ -35,6 +35,8 @@ def slide_texts(slide):
 def check(path):
     prs = Presentation(path)
     problems = []
+    if len(prs.slides) != 18:
+        problems.append(f"deck has {len(prs.slides)} slides, expected 18")
     for idx, slide in enumerate(prs.slides, start=1):
         joined = "\n".join(slide_texts(slide))
         for token in SLOT_RE.findall(joined):
