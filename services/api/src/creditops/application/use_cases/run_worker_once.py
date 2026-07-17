@@ -127,8 +127,19 @@ class RunWorkerOnce:
             if task is None:
                 # A missing claim is not proof of durable terminal success:
                 # it can also be a stale-version race or another worker's
-                # lease.  Keep the delivery recoverable; only the explicit
-                # success/SUPERSEDED branches below may archive it.
+                # lease.  Archive only when a second delivery observes an
+                # already durable terminal state; stale/racing tasks remain
+                # recoverable.
+                existing = await self._tasks.get(
+                    envelope.task_id,
+                    case_id=envelope.case_id,
+                )
+                if existing is not None and existing.status in {
+                    TaskStatus.SUCCEEDED,
+                    TaskStatus.SUPERSEDED,
+                    TaskStatus.FAILED_MANUAL_REVIEW,
+                }:
+                    await self._queue.archive(message.message_id)
                 return WorkerRunResult(
                     WorkerOutcome.STALE,
                     task_id=envelope.task_id,
