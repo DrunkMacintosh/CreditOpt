@@ -22,11 +22,21 @@ def test_input_slots_only_where_expected():
     # QR 18, screenshot labels 4/6/8. Nowhere else.
     import re
 
+    def strings(v):
+        if isinstance(v, str):
+            return [v]
+        if isinstance(v, (list, tuple)):
+            out = []
+            for item in v:
+                out.extend(strings(item))
+            return out
+        return []
+
     def slot_texts(s):
-        chunks = [s["title"], s.get("killer", "")] + s.get("bullets", [])
+        chunks = [s["title"], s.get("killer", "")] + list(s.get("bullets", []))
         for v in (s.get("extra") or {}).values():
-            chunks.append(str(v))
-        return re.findall(r"\[[^\]]+\]", " ".join(chunks))
+            chunks.extend(strings(v))
+        return [m for c in chunks for m in re.findall(r"\[[^\]]+\]", c)]
 
     with_slots = {s["n"] for s in SLIDES if slot_texts(s)}
     assert with_slots == {4, 6, 8, 13, 15, 17, 18}
@@ -36,3 +46,32 @@ def test_phrasing_rule_cho_shb():
     all_text = str(SLIDES)
     assert "đầu tiên cho SHB" in all_text
     assert "đầu tiên của SHB" not in all_text
+
+
+def test_em_dash_always_spaced():
+    # Guards against transcription drift: every em dash in final copy is " — ".
+    def strings(v):
+        if isinstance(v, str):
+            return [v]
+        if isinstance(v, (list, tuple)):
+            out = []
+            for item in v:
+                out.extend(strings(item))
+            return out
+        return []
+
+    for s in SLIDES:
+        texts = [s["title"], s.get("killer", "")] + list(s.get("bullets", []))
+        for v in (s.get("extra") or {}).values():
+            texts.extend(strings(v))
+        for text in texts:
+            # A lone "—" is a deliberate table-cell "not applicable" marker
+            # (spec §4 slide 11 compare_table), not a prose em dash needing
+            # surrounding spaces.
+            if text == "—":
+                continue
+            for i, ch in enumerate(text):
+                if ch == "—":
+                    assert 0 < i < len(text) - 1, f"slide {s['n']}: em dash at edge in {text!r}"
+                    assert text[i - 1] == " " and text[i + 1] == " ", \
+                        f"slide {s['n']}: unspaced em dash in {text!r}"
