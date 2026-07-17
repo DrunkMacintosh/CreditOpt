@@ -19,11 +19,14 @@ from creditops.api.errors import (
     validation_exception_handler,
 )
 from creditops.api.uploads import router as uploads_router
+from creditops.api.tasks import router as tasks_router
 from creditops.application.ports.storage import StoragePort
 from creditops.application.unit_of_work import UnitOfWorkFactory
 from creditops.config import Settings
 from creditops.infrastructure.postgres.repositories import PostgresUnitOfWorkFactory
 from creditops.infrastructure.postgres.session import PsycopgConnectionFactory
+from creditops.infrastructure.postgres.tasks import PostgresTaskRepository
+from creditops.infrastructure.supabase.queue import SupabaseQueue
 from creditops.infrastructure.supabase.storage import SupabaseStorage
 from creditops.observability import configure_structured_logging
 from creditops.security_headers import SecurityHeadersMiddleware
@@ -73,16 +76,29 @@ def create_app(
             audience=cast(str, configured.oidc_audience),
             key_resolver=RemoteJwksKeyResolver(cast(str, configured.oidc_jwks_url)),
         )
-    if uow_factory is None and configured.database_url:
-        uow_factory = PostgresUnitOfWorkFactory(
-            PsycopgConnectionFactory(configured.database_url.get_secret_value())
+    database_connection_factory = None
+    if configured.database_url:
+        database_connection_factory = PsycopgConnectionFactory(
+            configured.database_url.get_secret_value()
         )
+    if uow_factory is None and database_connection_factory is not None:
+        uow_factory = PostgresUnitOfWorkFactory(database_connection_factory)
     if storage_port is None and configured.supabase_url and configured.supabase_service_role_key:
         storage_port = SupabaseStorage(configured)
 
     application.state.jwt_verifier = jwt_verifier
     application.state.uow_factory = uow_factory
     application.state.storage = storage_port
+    application.state.task_repository = (
+        PostgresTaskRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
+    application.state.task_queue = (
+        SupabaseQueue(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
 
     @application.middleware("http")
     async def assign_correlation_id(
@@ -107,6 +123,7 @@ def create_app(
 
     application.include_router(cases_router)
     application.include_router(uploads_router)
+    application.include_router(tasks_router)
     return application
 
 
