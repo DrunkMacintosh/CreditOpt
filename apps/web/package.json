@@ -9,9 +9,10 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
-    "lint": "eslint app tests --max-warnings=0",
+    "lint": "eslint app components lib tests --max-warnings=0",
     "start": "next start",
-    "test": "vitest --globals --environment jsdom"
+    "test": "vitest --globals --environment jsdom",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "next": "^15.5.0",
