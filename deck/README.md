@@ -17,11 +17,19 @@ Edit those, rebuild, and visual polish in PowerPoint is never lost copy.
 1. Fill inputs in `deck/content.py`: team members (slide 17), measured
    validation numbers (13, 15), QR link (18). Numbers must come from real
    runs — never invented.
-2. Replace screenshot placeholders (slides 4, 6, 8) with real dashboard
-   captures in PowerPoint.
-3. Confirm official SHB brand colors in `deck/theme.py`.
-4. Rebuild, then run the gate — it must print OK:
+2. Confirm official SHB brand colors in `deck/theme.py`.
+3. Rebuild, test, and refresh the release copy:
 
-       python deck/check_final.py deck/output/deck.pptx
+       python -m deck.build
+       python -m pytest deck/tests
+       Copy-Item deck/output/deck.pptx deck/SHB-CreditOps-EvidenceGraph-pitch.pptx
 
-5. If the demo slips, reframe slides 6 and 13 per spec §2 before presenting.
+4. In PowerPoint, replace the screenshot placeholders (slides 4, 6, 8) and
+   the QR placeholder (slide 18) with real captures — edit ONLY the release
+   file `deck/SHB-CreditOps-EvidenceGraph-pitch.pptx`. Rebuilding overwrites
+   `deck/output/` but never touches the release file.
+5. Run the gate on the release file — it must print OK before submission:
+
+       python deck/check_final.py deck/SHB-CreditOps-EvidenceGraph-pitch.pptx
+
+6. If the demo slips, reframe slides 6 and 13 per spec §2 before presenting.

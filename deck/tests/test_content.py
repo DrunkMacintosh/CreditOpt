@@ -1,3 +1,4 @@
+from deck.compliance import slot_tokens, spec_strings
 from deck.content import SLIDES, DISCLAIMER_SLIDES, LAYOUTS
 
 
@@ -20,25 +21,7 @@ def test_disclaimer_flags_match_spec():
 def test_input_slots_only_where_expected():
     # Slots [..] are deliberate data slots (spec 3.3): metrics 13/15, team 17,
     # QR 18, screenshot labels 4/6/8. Nowhere else.
-    import re
-
-    def strings(v):
-        if isinstance(v, str):
-            return [v]
-        if isinstance(v, (list, tuple)):
-            out = []
-            for item in v:
-                out.extend(strings(item))
-            return out
-        return []
-
-    def slot_texts(s):
-        chunks = [s["title"], s.get("killer", "")] + list(s.get("bullets", []))
-        for v in (s.get("extra") or {}).values():
-            chunks.extend(strings(v))
-        return [m for c in chunks for m in re.findall(r"\[[^\]]+\]", c)]
-
-    with_slots = {s["n"] for s in SLIDES if slot_texts(s)}
+    with_slots = {s["n"] for s in SLIDES if slot_tokens(spec_strings(s))}
     assert with_slots == {4, 6, 8, 13, 15, 17, 18}
 
 
@@ -50,21 +33,8 @@ def test_phrasing_rule_cho_shb():
 
 def test_em_dash_always_spaced():
     # Guards against transcription drift: every em dash in final copy is " — ".
-    def strings(v):
-        if isinstance(v, str):
-            return [v]
-        if isinstance(v, (list, tuple)):
-            out = []
-            for item in v:
-                out.extend(strings(item))
-            return out
-        return []
-
     for s in SLIDES:
-        texts = [s["title"], s.get("killer", "")] + list(s.get("bullets", []))
-        for v in (s.get("extra") or {}).values():
-            texts.extend(strings(v))
-        for text in texts:
+        for text in spec_strings(s):
             # A lone "—" is a deliberate table-cell "not applicable" marker
             # (spec §4 slide 11 compare_table), not a prose em dash needing
             # surrounding spaces.

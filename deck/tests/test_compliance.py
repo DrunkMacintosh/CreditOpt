@@ -1,20 +1,9 @@
-import re
-
 import pytest
 from pptx import Presentation
 
-from deck.content import DISCLAIMER_SLIDES
+from deck.compliance import FORBIDDEN, slot_tokens, spec_strings
+from deck.content import DISCLAIMER_SLIDES, SLIDES
 from deck.theme import DISCLAIMER_VN, DISCLAIMER_EN
-
-FORBIDDEN = [
-    "đầu tiên của SHB",
-    "được SHB phê duyệt",
-    "SHB đã phê duyệt",
-    "SHB chứng thực",
-    "production-ready",
-    "sẵn sàng production",
-    "đã được chứng nhận bảo mật",
-]
 
 
 @pytest.fixture(scope="session")
@@ -50,9 +39,12 @@ def test_no_forbidden_claims(prs):
             assert phrase.lower() not in text, f"slide {idx}: forbidden '{phrase}'"
 
 
-def test_input_slots_still_present_until_filled(prs):
-    # Guards against someone silently deleting the slots instead of filling them.
-    slides = list(prs.slides)
-    for idx in (13, 15, 17):
-        assert re.search(r"\[[^\]]+\]", slide_text(slides[idx - 1])), \
-            f"slide {idx}: expected input slots"
+def test_rendered_slots_match_content_slots(prs):
+    # The render pipeline must surface exactly the [..] slots that content.py
+    # defines for each slide — no slot silently dropped by a layout, none
+    # invented. Stays green when the team legitimately fills real values in
+    # content.py, because both sides change together.
+    for spec, slide in zip(SLIDES, prs.slides):
+        expected = slot_tokens(spec_strings(spec))
+        rendered = slot_tokens([slide_text(slide)])
+        assert rendered == expected, f"slide {spec['n']}: {rendered} != {expected}"
