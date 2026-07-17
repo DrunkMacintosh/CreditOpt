@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+from creditops.config import Settings
+
+ROOT = Path(__file__).resolve().parents[4]
+TERRAFORM_ROOT = ROOT / "deploy" / "terraform"
+
+
+def _terraform() -> str:
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(TERRAFORM_ROOT.rglob("*.tf"))
+    )
+
+
+def test_production_configuration_fails_closed_without_secrets() -> None:
+    with pytest.raises(ValueError, match="Missing production configuration"):
+        Settings(app_env="production")
+
+
+def test_terraform_uses_pinned_secret_versions_without_secret_payloads() -> None:
+    terraform = _terraform()
+
+    assert "google_secret_manager_secret_version" not in terraform
+    assert re.search(r'version\s+=\s+[a-z_]+\.value\.version', terraform)
+    assert "secret_data" not in terraform
+    assert not re.search(r'version\s*=\s*"latest"', terraform, re.IGNORECASE)
+
+
+def test_terraform_defines_separate_runtime_identities_and_private_worker() -> None:
+    terraform = _terraform()
+
+    for identity in ("api", "worker", "scheduler"):
+        assert f'account_id   = "creditops-{identity}"' in terraform
+    assert "roles/run.invoker" in terraform
+    assert "allUsers" not in terraform
+    assert "google_cloud_run_v2_job_iam_member" in terraform
+
+
+def test_worker_and_scheduler_contracts_are_single_task_oauth_calls() -> None:
+    terraform = _terraform()
+
+    assert re.search(r"task_count\s*=\s*1", terraform)
+    assert re.search(r"parallelism\s*=\s*1", terraform)
+    assert re.search(r"max_retries\s*=\s*0", terraform)
+    assert "durable worker slot" in terraform.lower()
+    assert "oauth_token" in terraform
+    assert "https://run.googleapis.com/" in terraform
+
+
+def test_runtime_capacity_and_region_variables_have_no_defaults() -> None:
+    variables = (TERRAFORM_ROOT / "variables.tf").read_text(encoding="utf-8")
+
+    for name in (
+        "region",
+        "api_cpu",
+        "api_memory",
+        "api_timeout_seconds",
+        "worker_cpu",
+        "worker_memory",
+        "worker_timeout_seconds",
+    ):
+        block = re.search(rf'variable "{name}" \{{(.*?)\n\}}', variables, re.DOTALL)
+        assert block is not None
+        assert "default" not in block.group(1)
+
+
+def test_container_runs_as_non_root_and_has_explicit_modes() -> None:
+    dockerfile = (ROOT / "services" / "api" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert re.search(r"^USER [1-9][0-9]*$", dockerfile, re.MULTILINE)
+    assert 'CMD ["api"]' in dockerfile
+    assert "python -m creditops.worker.main" in dockerfile
+    assert "chmod -R a-w" in dockerfile
