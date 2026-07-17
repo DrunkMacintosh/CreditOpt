@@ -27,6 +27,8 @@ def remaining_slots(path):
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     path = sys.argv[1] if len(sys.argv) > 1 else "deck/output/deck.pptx"
     slots = remaining_slots(path)
     if not slots:
