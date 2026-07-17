@@ -1,4 +1,5 @@
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,3 +30,6 @@ class Settings(BaseSettings):
             missing = [name for name, value in required.items() if not value]
             if missing:
                 raise ValueError(f"Missing production configuration: {', '.join(missing)}")
+            jwks_url = urlsplit(self.oidc_jwks_url or "")
+            if jwks_url.scheme.lower() != "https" or not jwks_url.hostname:
+                raise ValueError("OIDC_JWKS_URL must use HTTPS in production")

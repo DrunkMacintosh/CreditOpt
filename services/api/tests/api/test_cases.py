@@ -111,9 +111,11 @@ class FakeUnitOfWorkFactory:
     def __init__(self) -> None:
         self.records: dict[UUID, CaseRecord] = {}
         self.events: list[AuditEvent] = []
+        self.calls = 0
 
     def __call__(self, actor: Any) -> FakeUnitOfWork:
         del actor
+        self.calls += 1
         return FakeUnitOfWork(self.records, self.events)
 
 
@@ -195,6 +197,16 @@ def test_missing_token_returns_flat_vietnamese_api_error(client: TestClient) -> 
         "correlationId": response.json()["correlationId"],
         "retryable": False,
     }
+
+
+def test_fastapi_does_not_accept_session_cookie_without_bearer_token(
+    client: TestClient,
+) -> None:
+    client.cookies.set("creditops_session", "next-bff-owned-session")
+    response = client.get("/api/v1/cases")
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "AUTHENTICATION_REQUIRED"
 
 
 @pytest.mark.parametrize(
@@ -303,7 +315,36 @@ def test_list_is_flat_cursor_ready_and_scoped_to_assigned_officer(
     assert response.json() == {
         "items": [create_response.json()],
         "nextCursor": None,
+        "capabilities": {"canCreateCase": True},
     }
+
+
+def test_non_intake_actor_gets_fail_closed_collection_without_repository_query(
+    client: TestClient,
+    signing_key: rsa.RSAPrivateKey,
+    uow_factory: FakeUnitOfWorkFactory,
+) -> None:
+    response = client.get(
+        "/api/v1/cases",
+        headers=authorization(make_token(signing_key, roles=["RISK_REVIEWER"])),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "nextCursor": None,
+        "capabilities": {"canCreateCase": False},
+    }
+    assert uow_factory.calls == 0
+
+
+def test_openapi_list_contract_exposes_collection_create_capability(
+    client: TestClient,
+) -> None:
+    schema = client.get("/openapi.json").json()
+
+    properties = schema["components"]["schemas"]["CaseCollectionCapabilities"]["properties"]
+    assert set(properties) == {"canCreateCase"}
 
 
 def test_other_officer_cannot_distinguish_case_from_missing_case(

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from types import TracebackType
 from typing import Any, Protocol, Self, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
@@ -79,8 +79,14 @@ def _case_from_row(row: Sequence[Any]) -> CaseRecord:
 
 
 class PostgresCaseRepository:
-    def __init__(self, connection: DatabaseConnection) -> None:
+    def __init__(
+        self,
+        connection: DatabaseConnection,
+        *,
+        id_factory: Callable[[], UUID] = uuid4,
+    ) -> None:
         self._connection = connection
+        self._id_factory = id_factory
         self._created_in_transaction: dict[UUID, CaseRecord] = {}
 
     async def create(
@@ -91,19 +97,15 @@ class PostgresCaseRepository:
         requested_amount: str,
         purpose_vi: str,
     ) -> CaseRecord:
-        cursor = await self._connection.execute(
+        case_id = self._id_factory()
+        await self._connection.execute(
             """
-            insert into public.credit_cases (workflow_state, created_by)
-            values (%s, %s)
-            returning id, case_version, created_at
+            insert into public.credit_cases (
+              id, case_version, workflow_state, created_by
+            ) values (%s, %s, %s, %s)
             """,
-            ("INTAKE_DRAFT", actor_id),
+            (case_id, 1, "INTAKE_DRAFT", actor_id),
         )
-        row = await cursor.fetchone()
-        if row is None:
-            raise RuntimeError("Case insert did not return a record")
-
-        case_id = cast(UUID, row[0])
         await self._connection.execute(
             """
             insert into public.case_assignments (
@@ -125,21 +127,16 @@ class PostgresCaseRepository:
             """,
             (
                 case_id,
-                cast(int, row[1]),
+                1,
                 1,
                 requested_amount,
                 purpose_vi,
                 actor_id,
             ),
         )
-        record = CaseRecord(
-            id=case_id,
-            version=cast(int, row[1]),
-            assigned_officer_id=assigned_officer_id,
-            requested_amount=requested_amount,
-            purpose_vi=purpose_vi,
-            created_at=cast(datetime, row[2]),
-        )
+        record = await self.get_assigned(case_id, assigned_officer_id)
+        if record is None:
+            raise RuntimeError("Created case is not visible to its active assigned officer")
         self._created_in_transaction[case_id] = record
         return record
 
@@ -273,11 +270,14 @@ class PostgresUnitOfWork:
     async def __aenter__(self) -> Self:
         self._connection_context = self._connection_factory()
         connection = await self._connection_context.__aenter__()
-        self._transaction_context = connection.transaction()
         transaction_entered = False
         try:
-            await self._transaction_context.__aenter__()
+            transaction_context = connection.transaction()
+            self._transaction_context = transaction_context
+            await transaction_context.__aenter__()
             transaction_entered = True
+
+            await connection.execute("SET LOCAL ROLE creditops_api")
 
             claims = json.dumps(
                 {
@@ -300,7 +300,7 @@ class PostgresUnitOfWork:
         except BaseException as exc:
             try:
                 if transaction_entered:
-                    await self._transaction_context.__aexit__(
+                    await transaction_context.__aexit__(
                         type(exc),
                         exc,
                         exc.__traceback__,

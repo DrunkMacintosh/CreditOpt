@@ -55,11 +55,18 @@ class CaseResponse(BaseModel):
     capabilities: CaseCapabilities
 
 
+class CaseCollectionCapabilities(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    can_create_case: bool = Field(serialization_alias="canCreateCase")
+
+
 class CaseListResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     items: list[CaseResponse]
     next_cursor: UUID | None = Field(serialization_alias="nextCursor")
+    capabilities: CaseCollectionCapabilities
 
 
 def _case_response(record: CaseRecord) -> CaseResponse:
@@ -132,12 +139,19 @@ async def create_case(
 
 @router.get("", response_model=CaseListResponse)
 async def list_cases(
+    request: Request,
     actor: Actor,
-    uow_factory: UowFactory,
     cursor: UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> CaseListResponse:
-    _require_intake_role(actor)
+    if INTAKE_OFFICER_ROLE not in actor.roles:
+        return CaseListResponse(
+            items=[],
+            next_cursor=None,
+            capabilities=CaseCollectionCapabilities(can_create_case=False),
+        )
+
+    uow_factory = _uow_factory(request)
     async with uow_factory(actor) as uow:
         records, next_cursor = await uow.cases.list_assigned(
             actor.actor_id,
@@ -147,6 +161,7 @@ async def list_cases(
     return CaseListResponse(
         items=[_case_response(record) for record in records],
         next_cursor=next_cursor,
+        capabilities=CaseCollectionCapabilities(can_create_case=True),
     )
 
 

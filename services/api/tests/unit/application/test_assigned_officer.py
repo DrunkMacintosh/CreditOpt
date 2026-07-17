@@ -191,6 +191,7 @@ async def test_postgres_uow_sets_transaction_local_context_with_parameters() -> 
     async with uow:
         pass
 
+    assert connection.executions[0] == ("SET LOCAL ROLE creditops_api", None)
     context_statements = [item for item in connection.executions if "set_config" in item[0]]
     assert len(context_statements) == 4
     assert all("%s" in query for query, _ in context_statements)
@@ -227,10 +228,18 @@ class ScriptedConnection:
 @pytest.mark.asyncio
 async def test_postgres_create_persists_structured_financing_request() -> None:
     case_id = uuid4()
-    connection = ScriptedConnection([[(case_id, 1, datetime.now(UTC))], [], []])
-    repository = PostgresCaseRepository(connection)
+    created_at = datetime.now(UTC)
+    connection = ScriptedConnection(
+        [
+            [],
+            [],
+            [],
+            [case_row(case_id, created_at)],
+        ]
+    )
+    repository = PostgresCaseRepository(connection, id_factory=lambda: case_id)
 
-    await repository.create(
+    record = await repository.create(
         actor_id=OFFICER_A,
         assigned_officer_id=OFFICER_A,
         requested_amount="5000000000",
@@ -239,6 +248,9 @@ async def test_postgres_create_persists_structured_financing_request() -> None:
 
     sql = "\n".join(query for query, _ in connection.executions)
     assert "insert into public.financing_requests" in sql
+    assert "returning" not in connection.executions[0][0].lower()
+    assert record.id == case_id
+    assert connection.executions[0][1] == (case_id, 1, "INTAKE_DRAFT", OFFICER_A)
 
 
 @pytest.mark.asyncio
@@ -330,3 +342,124 @@ async def test_postgres_uow_cleans_up_when_context_setup_fails() -> None:
 
     assert connection.transaction_context.exited is True
     assert connection_context.exited is True
+
+
+class FailingTransactionConstructionConnection:
+    def transaction(self) -> FakeTransaction:
+        raise RuntimeError("transaction construction failed")
+
+
+class TrackingConstructionConnectionContext(
+    AbstractAsyncContextManager[FailingTransactionConstructionConnection]
+):
+    def __init__(self, connection: FailingTransactionConstructionConnection) -> None:
+        self.connection = connection
+        self.exited = False
+
+    async def __aenter__(self) -> FailingTransactionConstructionConnection:
+        return self.connection
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        del exc_type, exc_value, traceback
+        self.exited = True
+
+
+@pytest.mark.asyncio
+async def test_postgres_uow_cleans_up_when_transaction_construction_fails() -> None:
+    connection = FailingTransactionConstructionConnection()
+    connection_context = TrackingConstructionConnectionContext(connection)
+    actor = ActorContext(
+        actor_id=OFFICER_A,
+        roles=frozenset({"INTAKE_OFFICER"}),
+        request_id="request-123",
+    )
+    uow = PostgresUnitOfWork(lambda: connection_context, actor)
+
+    with pytest.raises(RuntimeError, match="transaction construction failed"):
+        await uow.__aenter__()
+
+    assert connection_context.exited is True
+
+
+def case_row(
+    case_id: UUID,
+    created_at: datetime,
+    *,
+    actor_id: UUID = OFFICER_A,
+) -> tuple[Any, ...]:
+    return (
+        case_id,
+        1,
+        actor_id,
+        "5000000000",
+        "Bổ sung vốn lưu động",
+        created_at,
+    )
+
+
+@pytest.mark.asyncio
+async def test_postgres_pagination_uses_id_tiebreaker_for_equal_timestamps() -> None:
+    created_at = datetime(2026, 7, 17, tzinfo=UTC)
+    first_id = UUID("ffffffff-ffff-4fff-8fff-ffffffffffff")
+    second_id = UUID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+    third_id = UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+    connection = ScriptedConnection(
+        [
+            [
+                case_row(first_id, created_at),
+                case_row(second_id, created_at),
+                case_row(third_id, created_at),
+            ]
+        ]
+    )
+    repository = PostgresCaseRepository(connection)
+
+    records, next_cursor = await repository.list_assigned(
+        OFFICER_A,
+        cursor=None,
+        limit=2,
+    )
+
+    assert [record.id for record in records] == [first_id, second_id]
+    assert next_cursor == second_id
+    assert "order by cc.created_at desc, cc.id desc" in connection.executions[0][0]
+
+
+@pytest.mark.asyncio
+async def test_postgres_pagination_returns_page_after_tied_cursor() -> None:
+    created_at = datetime(2026, 7, 17, tzinfo=UTC)
+    cursor_id = UUID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+    next_id = UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+    connection = ScriptedConnection([[(created_at, cursor_id)], [case_row(next_id, created_at)]])
+    repository = PostgresCaseRepository(connection)
+
+    records, next_cursor = await repository.list_assigned(
+        OFFICER_A,
+        cursor=cursor_id,
+        limit=2,
+    )
+
+    assert [record.id for record in records] == [next_id]
+    assert next_cursor is None
+    assert connection.executions[1][1] == [OFFICER_A, created_at, cursor_id, 3]
+
+
+@pytest.mark.asyncio
+async def test_postgres_pagination_fails_closed_for_inaccessible_cursor() -> None:
+    connection = ScriptedConnection([[]])
+    repository = PostgresCaseRepository(connection)
+
+    records, next_cursor = await repository.list_assigned(
+        OFFICER_A,
+        cursor=uuid4(),
+        limit=2,
+    )
+
+    assert records == []
+    assert next_cursor is None
+    assert len(connection.executions) == 1
