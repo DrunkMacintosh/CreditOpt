@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-**CONFIRMED:** This specification defines the visual direction and image-generation prompts for a CreditOps project cover. It supports two outputs: a vertical poster and a horizontal website or GitHub banner.
+**CONFIRMED:** This specification defines the visual direction and image-generation prompt for a horizontal 16:9 CreditOps website or GitHub banner.
 
 **CONFIRMED:** The cover communicates a verifiable, evidence-centered multi-agent system that supports preparation and review of SME working-capital credit cases. It must not imply autonomous credit approval, policy waiver, or operational authority.
 
@@ -17,7 +17,7 @@
 - **Palette:** warm muted orange, copper-orange metallic highlights, ivory, champagne beige, and soft white.
 - **On-image text:** `CreditOps` only.
 - **Branding:** no logo and no tagline.
-- **Formats:** vertical poster and horizontal banner.
+- **Format:** horizontal 16:9 banner only.
 
 ## Composition
 
@@ -25,19 +25,7 @@ The Credit Case Digital Twin is the visual center of gravity. Its translucent do
 
 The transparent control ring encloses or intersects the core without using a checkmark, approval seal, credit score, or decision label. The background is an architectural ivory-beige 3D space with soft platforms, sparse particles, and generous negative space. The result should feel trustworthy, executive, and technologically advanced rather than futuristic or playful.
 
-## Poster prompt
-
-```text
-Create a premium cinematic 3D cover poster for a banking technology project titled exactly “CreditOps”. At the visual center, place a sophisticated translucent digital credit-case dossier made of frosted glass and refined brushed metal, representing a Credit Case Digital Twin. Inside the layered dossier, show abstract document sheets, structured data fields, evidence markers, calculation traces, and fine provenance links, with no readable customer information.
-
-Arrange six elegant abstract specialist nodes around the central dossier at different depths. Connect them to source documents, facts, calculations, evidence markers, and review findings through a precise luminous EvidenceGraph. The graph must feel structured, traceable, and purposeful, not like random decorative circuitry. Surround the core with a subtle transparent protective control ring that suggests governance, deterministic safeguards, auditability, and human-controlled checkpoints without resembling an approval seal or automated credit decision.
-
-Use a warm muted orange visual system: copper-orange metallic accents, soft amber edge lighting, ivory and champagne-beige architecture, frosted white glass, gentle volumetric glow, realistic ray-traced reflections, soft shadows, restrained particles, shallow depth of field, and generous negative space. Premium executive banking aesthetic, minimal and trustworthy, highly polished 3D product visualization, balanced vertical composition, refined cinematic lighting, crisp focal hierarchy.
-
-Display only the word “CreditOps” in large clean modern sans-serif typography, correctly spelled, centered in a clear high-contrast area. No logo, no tagline, no other readable text. Vertical poster, 4:5 aspect ratio, ultra-detailed, high resolution.
-```
-
-## Banner prompt
+## Image-generation prompt
 
 ```text
 Create a premium cinematic 3D horizontal website and GitHub banner for a banking technology project titled exactly “CreditOps”. Place a sophisticated translucent Credit Case Digital Twin dossier near the center-left, built from frosted glass, refined brushed metal, layered abstract documents, structured data fields, evidence markers, calculation traces, and fine provenance links. Do not show readable customer information.
