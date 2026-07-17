@@ -4,7 +4,9 @@ import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { CaseList } from "../../components/cases/case-list";
+import { CreateCaseGate } from "../../components/cases/create-case-gate";
 import { CreateCaseForm } from "../../components/cases/create-case-form";
+import { AppShell } from "../../components/shell/app-shell";
 import type { CreditCaseDto } from "../../lib/api/contracts";
 
 const cases: CreditCaseDto[] = [
@@ -40,7 +42,13 @@ const cases: CreditCaseDto[] = [
 
 describe("CaseList", () => {
   it("loads assigned cases and exposes upload only from server capabilities", async () => {
-    const api = { listCases: vi.fn().mockResolvedValue(cases) };
+    const api = {
+      listCases: vi.fn().mockResolvedValue({
+        items: cases,
+        nextCursor: null,
+        capabilities: { canCreateCase: false },
+      }),
+    };
 
     render(<CaseList api={api} />);
 
@@ -56,15 +64,42 @@ describe("CaseList", () => {
       screen.queryByRole("link", { name: "Tiếp nhận tài liệu — Mua nguyên vật liệu" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Không có quyền tải tài liệu")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Tạo hồ sơ" })).not.toBeInTheDocument();
   });
 
-  it("shows an explicit empty state without inventing a customer", async () => {
-    const api = { listCases: vi.fn().mockResolvedValue([]) };
+  it("fails closed on case creation when the collection capability is false", async () => {
+    const api = {
+      listCases: vi.fn().mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        capabilities: { canCreateCase: false },
+      }),
+    };
 
     render(<CaseList api={api} />);
 
     expect(await screen.findByText("Chưa có hồ sơ được phân công")).toBeVisible();
     expect(screen.queryByText(/Công ty/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Tạo hồ sơ" })).not.toBeInTheDocument();
+    expect(screen.getByText("Bạn không có quyền tạo hồ sơ minh họa.")).toBeVisible();
+  });
+
+  it("shows synthetic case creation only from the collection capability", async () => {
+    const api = {
+      listCases: vi.fn().mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        capabilities: { canCreateCase: true },
+      }),
+    };
+
+    render(<CaseList api={api} />);
+
+    expect(await screen.findByRole("link", { name: "Tạo hồ sơ" })).toHaveAttribute(
+      "href",
+      "/ho-so/tao-moi",
+    );
+    expect(screen.getByText(/dữ liệu tổng hợp dùng cho trình diễn/i)).toBeVisible();
   });
 
   it("lets the officer retry a failed case request", async () => {
@@ -72,7 +107,11 @@ describe("CaseList", () => {
       listCases: vi
         .fn()
         .mockRejectedValueOnce(new Error("offline"))
-        .mockResolvedValueOnce(cases.slice(0, 1)),
+        .mockResolvedValueOnce({
+          items: cases.slice(0, 1),
+          nextCursor: null,
+          capabilities: { canCreateCase: false },
+        }),
     };
 
     render(<CaseList api={api} />);
@@ -82,6 +121,21 @@ describe("CaseList", () => {
     expect(await screen.findByText("Bổ sung vốn lưu động")).toBeVisible();
     expect(api.listCases).toHaveBeenCalledTimes(2);
   });
+
+  it("labels an unknown workflow state as unknown", async () => {
+    const api = {
+      listCases: vi.fn().mockResolvedValue({
+        items: [{ ...cases[0], workflowState: "UNRECOGNIZED_STATE" }],
+        nextCursor: null,
+        capabilities: { canCreateCase: false },
+      }),
+    };
+
+    render(<CaseList api={api} />);
+
+    expect(await screen.findByText("Trạng thái không xác định")).toBeVisible();
+    expect(screen.queryByText("Đang xử lý")).not.toBeInTheDocument();
+  });
 });
 
 describe("CreateCaseForm", () => {
@@ -90,7 +144,7 @@ describe("CreateCaseForm", () => {
       createCase: vi.fn().mockResolvedValue(cases[0]),
     };
 
-    render(<CreateCaseForm api={api} />);
+    render(<CreateCaseForm api={api} canCreateCase />);
     fireEvent.change(screen.getByLabelText("Số tiền đề nghị"), {
       target: { value: "5000000000" },
     });
@@ -113,11 +167,48 @@ describe("CreateCaseForm", () => {
   it("does not submit missing financing details", async () => {
     const api = { createCase: vi.fn() };
 
-    render(<CreateCaseForm api={api} />);
+    render(<CreateCaseForm api={api} canCreateCase />);
     fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ" }));
 
+    expect(screen.getByRole("alert")).toHaveTextContent("Có 2 trường cần kiểm tra.");
     expect(await screen.findByText("Nhập số tiền đề nghị.")).toBeVisible();
     expect(screen.getByText("Nhập mục đích vay vốn.")).toBeVisible();
+    expect(screen.getByLabelText("Số tiền đề nghị")).toHaveFocus();
     expect(api.createCase).not.toHaveBeenCalled();
+  });
+
+  it("does not render a form without collection create authority", () => {
+    const api = { createCase: vi.fn() };
+
+    render(<CreateCaseForm api={api} canCreateCase={false} />);
+
+    expect(screen.queryByRole("button", { name: "Tạo hồ sơ" })).not.toBeInTheDocument();
+    expect(screen.getByText("Bạn không có quyền tạo hồ sơ minh họa.")).toBeVisible();
+  });
+});
+
+describe("CreateCaseGate", () => {
+  it("fails closed when direct navigation has no create capability", async () => {
+    const api = {
+      listCases: vi.fn().mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        capabilities: { canCreateCase: false },
+      }),
+      createCase: vi.fn(),
+    };
+
+    render(<CreateCaseGate api={api} />);
+
+    expect(await screen.findByText("Bạn không có quyền tạo hồ sơ minh họa.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Tạo hồ sơ" })).not.toBeInTheDocument();
+  });
+});
+
+describe("AppShell", () => {
+  it("does not expose an unconditional create-case action", () => {
+    render(<AppShell><p>Nội dung tổng hợp</p></AppShell>);
+
+    expect(screen.queryByRole("link", { name: "Tạo hồ sơ" })).not.toBeInTheDocument();
   });
 });

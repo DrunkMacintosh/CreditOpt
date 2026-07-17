@@ -6,6 +6,17 @@ export interface DirectUploadOptions {
   xhrFactory?: () => XMLHttpRequest;
 }
 
+export class DirectStorageError extends Error {
+  readonly name = "DirectStorageError";
+
+  constructor(
+    public readonly status: number,
+    public readonly code = "DIRECT_STORAGE_REQUEST_FAILED",
+  ) {
+    super(code);
+  }
+}
+
 export function uploadSigned(
   intent: SignedUploadIntentDto,
   file: File,
@@ -36,12 +47,12 @@ export function uploadSigned(
         options.onProgress(100);
         resolve();
       } else {
-        reject(new Error("SIGNED_UPLOAD_FAILED"));
+        reject(new DirectStorageError(xhr.status));
       }
     };
     xhr.onerror = () => {
       cleanUp();
-      reject(new Error("DIRECT_UPLOAD_NETWORK_ERROR"));
+      reject(new DirectStorageError(0, "DIRECT_STORAGE_NETWORK_ERROR"));
     };
     xhr.onabort = () => {
       cleanUp();

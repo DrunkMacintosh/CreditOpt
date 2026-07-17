@@ -1,6 +1,6 @@
 import React from "react";
 
-import { CreateCaseForm } from "../../../components/cases/create-case-form";
+import { CreateCaseGate } from "../../../components/cases/create-case-gate";
 
 export default function CreateCasePage() {
   return (
@@ -8,9 +8,9 @@ export default function CreateCasePage() {
       <div className="page-heading">
         <p className="eyebrow">Nhu cầu cấp vốn</p>
         <h1>Tạo hồ sơ</h1>
-        <p>Chỉ ghi nhận thông tin cần thiết đã được cán bộ tiếp nhận xác định. Trường chưa biết được để trống, không tự suy đoán.</p>
+        <p>Chỉ dùng dữ liệu tổng hợp được tạo cho trình diễn. Không nhập dữ liệu khách hàng thật và không tự suy đoán trường chưa biết.</p>
       </div>
-      <CreateCaseForm />
+      <CreateCaseGate />
     </div>
   );
 }

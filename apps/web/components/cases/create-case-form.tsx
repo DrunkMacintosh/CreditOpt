@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import React, { type FormEvent, useState } from "react";
+import React, { type FormEvent, useRef, useState } from "react";
 
 import { creditOpsApi, getVietnameseApiError } from "../../lib/api/client";
 import type { CreditCaseDto } from "../../lib/api/contracts";
 
 interface CreateCaseFormProps {
   api?: Pick<typeof creditOpsApi, "createCase">;
+  canCreateCase: boolean;
 }
 
 interface FormErrors {
@@ -15,13 +16,19 @@ interface FormErrors {
   purpose?: string;
 }
 
-export function CreateCaseForm({ api = creditOpsApi }: CreateCaseFormProps) {
+export function CreateCaseForm({
+  api = creditOpsApi,
+  canCreateCase,
+}: CreateCaseFormProps) {
   const [requestedAmount, setRequestedAmount] = useState("");
   const [purpose, setPurpose] = useState("");
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [createdCase, setCreatedCase] = useState<CreditCaseDto | null>(null);
+  const [validationSummary, setValidationSummary] = useState<string | null>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const purposeRef = useRef<HTMLTextAreaElement>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -35,7 +42,14 @@ export function CreateCaseForm({ api = creditOpsApi }: CreateCaseFormProps) {
     }
     if (!financingPurpose) nextErrors.purpose = "Nhập mục đích vay vốn.";
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    const errorCount = Object.keys(nextErrors).length;
+    if (errorCount > 0) {
+      setValidationSummary(`Có ${errorCount} trường cần kiểm tra.`);
+      if (nextErrors.requestedAmount) amountRef.current?.focus();
+      else purposeRef.current?.focus();
+      return;
+    }
+    setValidationSummary(null);
 
     setSubmitting(true);
     setRequestError(null);
@@ -50,11 +64,20 @@ export function CreateCaseForm({ api = creditOpsApi }: CreateCaseFormProps) {
     }
   }
 
+  if (!canCreateCase) {
+    return (
+      <div className="state-panel" role="alert">
+        <h2>Không thể tạo hồ sơ minh họa</h2>
+        <p>Bạn không có quyền tạo hồ sơ minh họa.</p>
+      </div>
+    );
+  }
+
   if (createdCase) {
     return (
       <div className="state-panel" role="status">
         <h2>Đã tạo hồ sơ</h2>
-        <p>Thông tin đã được ghi nhận. Tài liệu chỉ được đăng ký sau khi kho lưu trữ xác minh.</p>
+        <p>Thông tin tổng hợp dùng cho trình diễn đã được ghi nhận. Tài liệu chỉ được đăng ký sau khi kho lưu trữ xác minh.</p>
         <Link
           className="button button-primary"
           href={`/ho-so/${encodeURIComponent(createdCase.id)}/tiep-nhan`}
@@ -67,6 +90,11 @@ export function CreateCaseForm({ api = creditOpsApi }: CreateCaseFormProps) {
 
   return (
     <form className="case-form" noValidate onSubmit={submit}>
+      {validationSummary ? (
+        <p aria-live="assertive" className="form-alert" role="alert">
+          {validationSummary}
+        </p>
+      ) : null}
       <div className="field-group">
         <label htmlFor="requested-amount">Số tiền đề nghị</label>
         <div className="input-suffix">
@@ -78,6 +106,7 @@ export function CreateCaseForm({ api = creditOpsApi }: CreateCaseFormProps) {
             inputMode="numeric"
             onChange={(event) => setRequestedAmount(event.target.value)}
             placeholder="Ví dụ: 5000000000"
+            ref={amountRef}
             value={requestedAmount}
           />
           <span>VND</span>
@@ -101,11 +130,12 @@ export function CreateCaseForm({ api = creditOpsApi }: CreateCaseFormProps) {
           maxLength={500}
           onChange={(event) => setPurpose(event.target.value)}
           placeholder="Mô tả nhu cầu vốn lưu động do cán bộ ghi nhận"
+          ref={purposeRef}
           rows={5}
           value={purpose}
         />
         <p className="field-help" id="purpose-help">
-          Không nhập thông tin khách hàng không cần thiết cho nhu cầu cấp vốn.
+          Chỉ nhập dữ liệu tổng hợp dùng cho trình diễn; không dùng dữ liệu khách hàng thật.
         </p>
         {errors.purpose ? (
           <p className="field-error" id="purpose-error">

@@ -9,7 +9,7 @@ interface UploadProgressProps {
 }
 
 export function UploadProgress({ item, onCancel, onRetry }: UploadProgressProps) {
-  const active = item.status === "REQUESTING_INTENT" || item.status === "UPLOADING" || item.status === "VERIFYING";
+  const cancellable = item.status === "REQUESTING_INTENT" || item.status === "UPLOADING";
   return (
     <li className="upload-item">
       <div className="upload-item-heading">
@@ -17,7 +17,7 @@ export function UploadProgress({ item, onCancel, onRetry }: UploadProgressProps)
           <strong>{item.file.name}</strong>
           <span>{formatBytes(item.file.size)}</span>
         </div>
-        {active ? (
+        {cancellable ? (
           <button
             aria-label={`Hủy tải ${item.file.name}`}
             className="text-button"
@@ -59,15 +59,34 @@ function statusText(item: UploadItem): string {
     case "UPLOADING":
       return "Đang tải trực tiếp lên kho tài liệu";
     case "VERIFYING":
-      return "Đang xác minh tài liệu";
+      return "Đang xác minh tài liệu. Không thể hủy ở bước này.";
     case "REGISTERED":
-      return "Đang chờ xử lý";
+      return taskStatusText(item.taskStatus);
     case "DUPLICATE":
       return "Tài liệu trùng khớp với bản đã có";
     case "CANCELLED":
       return "Đã hủy tải lên";
     case "FAILED":
       return item.error ?? "Không thể tải tài liệu.";
+  }
+}
+
+function taskStatusText(status: UploadItem["taskStatus"]): string {
+  switch (status) {
+    case "PENDING":
+      return "Đang chờ xử lý";
+    case "RUNNING":
+      return "Đang xử lý tài liệu";
+    case "RETRY_WAIT":
+      return "Đang chờ thử lại";
+    case "SUCCEEDED":
+      return "Đã xử lý xong";
+    case "FAILED_MANUAL_REVIEW":
+      return "Cần rà soát thủ công";
+    case "SUPERSEDED":
+      return "Tác vụ đã được thay thế";
+    case null:
+      return "Trạng thái tác vụ không xác định";
   }
 }
 

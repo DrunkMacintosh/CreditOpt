@@ -2,6 +2,7 @@ import type {
   ApiErrorDto,
   CaseCapabilities,
   CompleteUploadResponseDto,
+  CreditCaseListDto,
   CreditCaseDto,
   TaskStatus,
   TaskStatusDto,
@@ -42,6 +43,13 @@ function positiveInteger(value: unknown, label: string): number {
   return value;
 }
 
+function boolean(value: unknown, label: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`Phản hồi thiếu ${label} hợp lệ.`);
+  }
+  return value;
+}
+
 function parseHeaders(value: unknown): Readonly<Record<string, string>> {
   if (value === undefined || value === null) return {};
   const raw = record(value, "headers");
@@ -58,9 +66,9 @@ function parseHeaders(value: unknown): Readonly<Record<string, string>> {
 function parseCapabilities(value: unknown): CaseCapabilities {
   const raw = record(value, "capabilities");
   return {
-    canUpload: raw.canUpload === true,
-    canConfirm: raw.canConfirm === true,
-    canCompleteIntake: raw.canCompleteIntake === true,
+    canUpload: boolean(raw.canUpload, "canUpload"),
+    canConfirm: boolean(raw.canConfirm, "canConfirm"),
+    canCompleteIntake: boolean(raw.canCompleteIntake, "canCompleteIntake"),
   };
 }
 
@@ -85,41 +93,51 @@ export function parseCreditCase(value: unknown): CreditCaseDto {
   };
 }
 
-export function parseCreditCaseList(value: unknown): CreditCaseDto[] {
-  const items = Array.isArray(value)
-    ? value
-    : record(value, "danh sách hồ sơ").items;
+export function parseCreditCaseList(value: unknown): CreditCaseListDto {
+  const raw = record(value, "danh sách hồ sơ");
+  const items = raw.items;
   if (!Array.isArray(items)) {
     throw new Error("Phản hồi danh sách hồ sơ không đúng định dạng.");
   }
-  return items.map(parseCreditCase);
+  const capabilities = raw.capabilities === undefined
+    ? {}
+    : record(raw.capabilities, "quyền danh sách hồ sơ");
+  const nextCursor = raw.nextCursor;
+  if (nextCursor !== null && typeof nextCursor !== "string") {
+    throw new Error("Phản hồi nextCursor không đúng định dạng.");
+  }
+  return {
+    items: items.map(parseCreditCase),
+    nextCursor,
+    capabilities: {
+      canCreateCase: boolean(capabilities.canCreateCase, "canCreateCase"),
+    },
+  };
 }
 
 export function parseUploadIntent(value: unknown): UploadIntentDto {
   const raw = record(value, "phiên tải lên");
-  const authorization =
-    typeof raw.authorization === "object" && raw.authorization !== null
-      ? record(raw.authorization, "ủy quyền tải lên")
-      : {};
-  const normalizedMode = string(raw.mode, "chế độ tải lên").toUpperCase();
+  const mode = string(raw.mode, "chế độ tải lên");
+  const headers = parseHeaders(raw.headers);
+  if (headerValue(headers, "x-upsert")?.trim().toLowerCase() === "true") {
+    throw new Error("Ủy quyền tải lên không được bật upsert.");
+  }
   const common = {
-    intentId: string(raw.intentId ?? raw.id, "id phiên tải lên"),
+    intentId: string(raw.intentId, "id phiên tải lên"),
     expiresAt: string(raw.expiresAt, "thời điểm hết hạn"),
-    uploadUrl: string(
-      raw.uploadUrl ?? raw.tusEndpoint ?? authorization.url,
-      "địa chỉ tải lên",
-    ),
-    headers: parseHeaders(raw.headers ?? authorization.headers),
+    uploadUrl: string(raw.uploadUrl, "địa chỉ tải lên"),
+    headers,
   };
 
-  if (normalizedMode === "SIGNED") {
-    const method = String(raw.method ?? authorization.method ?? "PUT").toUpperCase();
+  if (mode === "SIGNED") {
+    const method = string(raw.method, "phương thức tải lên");
     if (method !== "POST" && method !== "PUT") {
       throw new Error("Phương thức tải lên không được hỗ trợ.");
     }
     return { ...common, mode: "SIGNED", method };
   }
-  if (normalizedMode === "RESUMABLE") {
+  if (mode === "RESUMABLE") {
+    requireObjectBindingMetadata(headers);
     return { ...common, mode: "RESUMABLE" };
   }
   throw new Error("Chế độ tải lên không được hỗ trợ.");
@@ -136,12 +154,71 @@ export function parseTaskStatus(value: unknown): TaskStatusDto {
 
 export function parseCompleteUpload(value: unknown): CompleteUploadResponseDto {
   const raw = record(value, "hoàn tất tải lên");
-  return {
-    documentId: nullableString(raw.documentId),
-    documentVersionId: nullableString(raw.documentVersionId),
-    duplicateOfDocumentId: nullableString(raw.duplicateOfDocumentId),
-    task: raw.task === null || raw.task === undefined ? null : parseTaskStatus(raw.task),
-  };
+  const outcome = string(raw.outcome, "kết quả hoàn tất");
+  if (outcome === "DUPLICATE") {
+    if (
+      raw.documentId !== undefined ||
+      raw.documentVersionId !== undefined ||
+      raw.task !== undefined
+    ) {
+      throw new Error("Kết quả tài liệu trùng lặp chứa trạng thái mâu thuẫn.");
+    }
+    return {
+      outcome,
+      duplicateOfDocumentId: string(
+        raw.duplicateOfDocumentId,
+        "tài liệu trùng lặp",
+      ),
+    };
+  }
+  if (outcome === "REGISTERED") {
+    if (raw.duplicateOfDocumentId !== undefined) {
+      throw new Error("Kết quả đăng ký tài liệu chứa trạng thái mâu thuẫn.");
+    }
+    return {
+      outcome,
+      documentId: string(raw.documentId, "id tài liệu"),
+      documentVersionId: string(raw.documentVersionId, "id phiên bản tài liệu"),
+      task: parseTaskStatus(raw.task),
+    };
+  }
+  throw new Error("Kết quả hoàn tất tải lên không được hỗ trợ.");
+}
+
+function headerValue(
+  headers: Readonly<Record<string, string>>,
+  name: string,
+): string | undefined {
+  const normalizedName = name.toLowerCase();
+  return Object.entries(headers).find(
+    ([header]) => header.toLowerCase() === normalizedName,
+  )?.[1];
+}
+
+function requireObjectBindingMetadata(
+  headers: Readonly<Record<string, string>>,
+): void {
+  const metadata = headerValue(headers, "Upload-Metadata");
+  const entries = new Map(
+    (metadata ?? "").split(",").map((entry) => {
+      const [name, encodedValue, ...extra] = entry.trim().split(/\s+/);
+      return extra.length === 0 ? [name, encodedValue] : ["", ""];
+    }),
+  );
+  if (!validBase64(entries.get("bucketName")) || !validBase64(entries.get("objectName"))) {
+    throw new Error(
+      "Upload-Metadata phải ràng buộc bucketName và objectName hợp lệ.",
+    );
+  }
+}
+
+function validBase64(value: string | undefined): boolean {
+  if (!value || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
+  try {
+    return atob(value).length > 0;
+  } catch {
+    return false;
+  }
 }
 
 export function parseApiError(value: unknown): ApiErrorDto | null {

@@ -15,6 +15,16 @@ export interface CreditCaseDto {
   capabilities: CaseCapabilities;
 }
 
+export interface CaseCollectionCapabilities {
+  canCreateCase: boolean;
+}
+
+export interface CreditCaseListDto {
+  items: CreditCaseDto[];
+  nextCursor: string | null;
+  capabilities: CaseCollectionCapabilities;
+}
+
 export interface CreateCaseRequestDto {
   requestedAmount: string;
   purpose: string;
@@ -57,12 +67,21 @@ export interface TaskStatusDto {
   status: TaskStatus;
 }
 
-export interface CompleteUploadResponseDto {
-  documentId: string | null;
-  documentVersionId: string | null;
-  duplicateOfDocumentId: string | null;
-  task: TaskStatusDto | null;
+export interface DuplicateUploadResponseDto {
+  outcome: "DUPLICATE";
+  duplicateOfDocumentId: string;
 }
+
+export interface RegisteredUploadResponseDto {
+  outcome: "REGISTERED";
+  documentId: string;
+  documentVersionId: string;
+  task: TaskStatusDto;
+}
+
+export type CompleteUploadResponseDto =
+  | DuplicateUploadResponseDto
+  | RegisteredUploadResponseDto;
 
 export interface ApiErrorDto {
   code: string;
@@ -72,7 +91,7 @@ export interface ApiErrorDto {
 }
 
 export interface CaseApi {
-  listCases(): Promise<CreditCaseDto[]>;
+  listCases(): Promise<CreditCaseListDto>;
   getCase(caseId: string): Promise<CreditCaseDto>;
   createCase(request: CreateCaseRequestDto): Promise<CreditCaseDto>;
 }

@@ -19,9 +19,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
         <nav aria-label="Điều hướng chính" className="primary-nav">
           <Link href="/ho-so">Hồ sơ</Link>
-          <Link className="button button-header" href="/ho-so/tao-moi">
-            Tạo hồ sơ
-          </Link>
         </nav>
       </header>
       <div className="authority-boundary" role="note">

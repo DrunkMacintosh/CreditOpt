@@ -12,7 +12,7 @@
     "lint": "eslint app components lib tests --max-warnings=0",
     "start": "next start",
     "test": "vitest --globals --environment jsdom",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "next": "^15.5.0",

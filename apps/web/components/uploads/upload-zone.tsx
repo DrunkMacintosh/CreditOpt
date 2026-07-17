@@ -3,6 +3,7 @@
 import React, { type ChangeEvent, useRef, useState } from "react";
 
 import { creditOpsApi, getVietnameseApiError } from "../../lib/api/client";
+import type { UploadIntentDto } from "../../lib/api/contracts";
 import {
   directUploadTransport,
   type DirectUploadTransport,
@@ -22,19 +23,20 @@ const ACCEPTED_CONTENT = new Map([
 
 interface UploadZoneProps {
   caseId: string;
-  canUpload?: boolean;
+  canUpload: boolean;
   api?: Pick<typeof creditOpsApi, "createUploadIntent" | "completeUploadIntent">;
   transport?: DirectUploadTransport;
 }
 
 export function UploadZone({
   caseId,
-  canUpload = true,
+  canUpload,
   api = creditOpsApi,
   transport = directUploadTransport,
 }: UploadZoneProps) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const controllers = useRef(new Map<string, AbortController>());
+  const sessions = useRef(new Map<string, UploadSession>());
   const sequence = useRef(0);
 
   function update(id: string, patch: Partial<UploadItem>) {
@@ -55,16 +57,18 @@ export function UploadZone({
         progress: 0,
         error: validationError,
         duplicateOfDocumentId: null,
+        taskStatus: null,
       } satisfies UploadItem;
     });
     setItems((current) => [...current, ...nextItems]);
     for (const item of nextItems) {
-      if (!item.error) void processFile(item.id, item.file);
+      if (!item.error) void createIntentAndUpload(item.id, item.file);
     }
     event.target.value = "";
   }
 
-  async function processFile(id: string, file: File) {
+  async function createIntentAndUpload(id: string, file: File) {
+    sessions.current.delete(id);
     const controller = new AbortController();
     controllers.current.set(id, controller);
     update(id, {
@@ -72,6 +76,7 @@ export function UploadZone({
       progress: 0,
       error: null,
       duplicateOfDocumentId: null,
+      taskStatus: null,
     });
 
     try {
@@ -85,38 +90,104 @@ export function UploadZone({
         throw new ExpiredUploadError();
       }
       if (controller.signal.aborted) throw new DOMException("Cancelled", "AbortError");
-      update(id, { status: "UPLOADING", progress: 0 });
-      await uploadFromIntent(transport, intent, file, {
+      const session: UploadSession = {
+        intent,
+        idempotencyKey: randomIdempotencyKey(),
+        phase: "UPLOAD",
+      };
+      sessions.current.set(id, session);
+      await performDirectUpload(id, file, session, controller);
+    } catch (error) {
+      handleFailure(id, error, controller);
+    } finally {
+      deleteController(id, controller);
+    }
+  }
+
+  async function performDirectUpload(
+    id: string,
+    file: File,
+    session: UploadSession,
+    controller: AbortController,
+  ) {
+    update(id, {
+      status: "UPLOADING",
+      progress: 0,
+      error: null,
+      duplicateOfDocumentId: null,
+      taskStatus: null,
+    });
+
+    try {
+      await uploadFromIntent(transport, session.intent, file, {
         signal: controller.signal,
         onProgress: (progress) => update(id, { progress }),
+        resumeUrl: session.resumableUploadUrl,
+        onResumeUrl: (resumeUrl) => {
+          if (sessions.current.get(id) === session) {
+            session.resumableUploadUrl = resumeUrl;
+          }
+        },
       });
       if (controller.signal.aborted) throw new DOMException("Cancelled", "AbortError");
-      update(id, { status: "VERIFYING", progress: 100 });
-      const result = await api.completeUploadIntent(intent.intentId, randomIdempotencyKey());
-      if (
-        !result.duplicateOfDocumentId &&
-        (!result.documentId || !result.documentVersionId || !result.task)
-      ) {
-        throw new Error("UPLOAD_COMPLETION_INCOMPLETE");
-      }
-      update(id, result.duplicateOfDocumentId
-        ? {
-            status: "DUPLICATE",
-            duplicateOfDocumentId: result.duplicateOfDocumentId,
-          }
-        : { status: "REGISTERED" });
     } catch (error) {
-      if (controller.signal.aborted || isAbortError(error)) {
-        update(id, { status: "CANCELLED", error: null });
-      } else if (error instanceof ExpiredUploadError) {
+      handleFailure(id, error, controller);
+      return;
+    } finally {
+      deleteController(id, controller);
+    }
+
+    session.phase = "COMPLETION";
+    await completeExistingIntent(id, session);
+  }
+
+  async function completeExistingIntent(id: string, session: UploadSession) {
+    update(id, { status: "VERIFYING", progress: 100, error: null });
+    try {
+      const result = await api.completeUploadIntent(
+        session.intent.intentId,
+        session.idempotencyKey,
+      );
+      if (result.outcome === "DUPLICATE") {
         update(id, {
-          status: "FAILED",
-          error: "Phiên tải lên đã hết hạn. Vui lòng thử lại.",
+          status: "DUPLICATE",
+          duplicateOfDocumentId: result.duplicateOfDocumentId,
+          taskStatus: null,
+        });
+      } else if (result.outcome === "REGISTERED") {
+        update(id, {
+          status: "REGISTERED",
+          duplicateOfDocumentId: null,
+          taskStatus: result.task.status,
         });
       } else {
-        update(id, { status: "FAILED", error: getVietnameseApiError(error) });
+        throw new Error("UPLOAD_COMPLETION_INVALID_OUTCOME");
       }
-    } finally {
+      sessions.current.delete(id);
+    } catch (error) {
+      update(id, { status: "FAILED", error: getVietnameseApiError(error) });
+    }
+  }
+
+  function handleFailure(
+    id: string,
+    error: unknown,
+    controller: AbortController,
+  ) {
+    if (controller.signal.aborted || isAbortError(error)) {
+      update(id, { status: "CANCELLED", error: null });
+    } else if (error instanceof ExpiredUploadError) {
+      update(id, {
+        status: "FAILED",
+        error: "Phiên tải lên đã hết hạn. Vui lòng thử lại.",
+      });
+    } else {
+      update(id, { status: "FAILED", error: getVietnameseApiError(error) });
+    }
+  }
+
+  function deleteController(id: string, controller: AbortController) {
+    if (controllers.current.get(id) === controller) {
       controllers.current.delete(id);
     }
   }
@@ -128,7 +199,25 @@ export function UploadZone({
 
   function retry(id: string) {
     const item = items.find((candidate) => candidate.id === id);
-    if (item) void processFile(item.id, item.file);
+    if (!item) return;
+
+    const session = sessions.current.get(id);
+    if (session?.phase === "COMPLETION") {
+      void completeExistingIntent(id, session);
+      return;
+    }
+    if (
+      session?.phase === "UPLOAD" &&
+      session.intent.mode === "RESUMABLE" &&
+      session.resumableUploadUrl &&
+      validFutureDate(session.intent.expiresAt)
+    ) {
+      const controller = new AbortController();
+      controllers.current.set(id, controller);
+      void performDirectUpload(id, item.file, session, controller);
+      return;
+    }
+    void createIntentAndUpload(item.id, item.file);
   }
 
   if (!canUpload) {
@@ -150,7 +239,7 @@ export function UploadZone({
         <span className="private-badge">Kho riêng tư</span>
       </div>
       <p className="section-copy">
-        Trình duyệt gửi tệp thẳng tới kho tài liệu bằng quyền tải lên ngắn hạn. Hệ thống chỉ đăng ký tài liệu sau khi backend xác minh đối tượng đã lưu.
+        Bản trình diễn chỉ dùng tài liệu tổng hợp. Trình duyệt gửi tệp thẳng tới kho tài liệu bằng quyền tải lên ngắn hạn; backend phải xác minh đối tượng đã lưu trước khi đăng ký.
       </p>
       <div className="upload-dropzone">
         <input
@@ -218,3 +307,10 @@ function isAbortError(error: unknown): boolean {
 }
 
 class ExpiredUploadError extends Error {}
+
+interface UploadSession {
+  intent: UploadIntentDto;
+  idempotencyKey: string;
+  phase: "UPLOAD" | "COMPLETION";
+  resumableUploadUrl?: string;
+}

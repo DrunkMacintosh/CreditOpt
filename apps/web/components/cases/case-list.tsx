@@ -4,14 +4,14 @@ import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 
 import { creditOpsApi, getVietnameseApiError } from "../../lib/api/client";
-import type { CreditCaseDto } from "../../lib/api/contracts";
+import type { CreditCaseListDto } from "../../lib/api/contracts";
 
 interface CaseListProps {
   api?: Pick<typeof creditOpsApi, "listCases">;
 }
 
 export function CaseList({ api = creditOpsApi }: CaseListProps) {
-  const [cases, setCases] = useState<CreditCaseDto[]>([]);
+  const [collection, setCollection] = useState<CreditCaseListDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,7 +19,7 @@ export function CaseList({ api = creditOpsApi }: CaseListProps) {
     setLoading(true);
     setError(null);
     try {
-      setCases(await api.listCases());
+      setCollection(await api.listCases());
     } catch (requestError) {
       setError(getVietnameseApiError(requestError));
     } finally {
@@ -57,21 +57,37 @@ export function CaseList({ api = creditOpsApi }: CaseListProps) {
     );
   }
 
-  if (cases.length === 0) {
+  if (!collection) {
+    return null;
+  }
+
+  if (collection.items.length === 0) {
     return (
       <div className="state-panel">
         <h2>Chưa có hồ sơ được phân công</h2>
-        <p>Tạo hồ sơ từ nhu cầu cấp vốn thực tế hoặc chờ phân công từ hệ thống.</p>
-        <Link className="button button-primary" href="/ho-so/tao-moi">
-          Tạo hồ sơ
-        </Link>
+        <p>Không có hồ sơ trong phạm vi phân công. Chỉ sử dụng dữ liệu tổng hợp dùng cho trình diễn.</p>
+        {collection.capabilities.canCreateCase ? (
+          <Link className="button button-primary" href="/ho-so/tao-moi">
+            Tạo hồ sơ
+          </Link>
+        ) : (
+          <p className="permission-note">Bạn không có quyền tạo hồ sơ minh họa.</p>
+        )}
       </div>
     );
   }
 
   return (
-    <ul aria-label="Hồ sơ được phân công" className="case-grid">
-      {cases.map((creditCase) => {
+    <>
+      {collection.capabilities.canCreateCase ? (
+        <div className="collection-actions">
+          <Link className="button button-primary" href="/ho-so/tao-moi">
+            Tạo hồ sơ
+          </Link>
+        </div>
+      ) : null}
+      <ul aria-label="Hồ sơ được phân công" className="case-grid">
+      {collection.items.map((creditCase) => {
         const purpose = creditCase.purpose ?? "Chưa có mục đích vay vốn";
         return (
           <li className="case-card" key={creditCase.id}>
@@ -122,7 +138,8 @@ export function CaseList({ api = creditOpsApi }: CaseListProps) {
           </li>
         );
       })}
-    </ul>
+      </ul>
+    </>
   );
 }
 
@@ -150,5 +167,5 @@ function workflowStateLabel(value: string): string {
     READY_FOR_SPECIALIST_REVIEW: "Sẵn sàng bàn giao",
     COMPLETED: "Đã hoàn tất tiếp nhận",
   };
-  return labels[value] ?? "Đang xử lý";
+  return labels[value] ?? "Trạng thái không xác định";
 }

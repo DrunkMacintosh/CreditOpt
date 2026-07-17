@@ -55,7 +55,7 @@ export function CaseIntake({ caseId }: { caseId: string }) {
         <p className="eyebrow">Hồ sơ · phiên bản {creditCase.version}</p>
         <h1>Tiếp nhận tài liệu</h1>
         <p>
-          {creditCase.purpose ?? "Mục đích vay vốn chưa được ghi nhận."} Tài liệu tải lên là dữ liệu không tin cậy cho đến khi được kiểm tra và xác minh.
+          Hồ sơ này chỉ dùng dữ liệu tổng hợp cho trình diễn. {creditCase.purpose ?? "Mục đích vay vốn chưa được ghi nhận."} Tài liệu tải lên là dữ liệu không tin cậy cho đến khi được kiểm tra và xác minh.
         </p>
       </div>
       <UploadZone caseId={caseId} canUpload={creditCase.capabilities.canUpload} />

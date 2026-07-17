@@ -3,6 +3,7 @@ import type {
   CreateCaseRequestDto,
   CreateUploadIntentRequestDto,
   CreditCaseDto,
+  CreditCaseListDto,
   CreditOpsApi,
   UploadIntentDto,
 } from "./contracts";
@@ -15,6 +16,11 @@ import {
 } from "./schemas";
 
 type Fetcher = typeof fetch;
+type CsrfTokenProvider = () => string | null;
+
+const BFF_BASE_URL = "/api/creditops";
+const CSRF_COOKIE_NAME = "__Host-creditops-csrf";
+const CSRF_HEADER_NAME = "x-creditops-csrf";
 
 export class ApiClientError extends Error {
   constructor(
@@ -29,7 +35,7 @@ export class ApiClientError extends Error {
 }
 
 export function getVietnameseApiError(error: unknown): string {
-  if (error instanceof ApiClientError) {
+  if (error instanceof ApiClientError || isDirectStorageError(error)) {
     if (error.code === "UPLOAD_INTENT_EXPIRED") {
       return "Phiên tải lên đã hết hạn. Vui lòng thử lại.";
     }
@@ -51,17 +57,28 @@ export function getVietnameseApiError(error: unknown): string {
   return "Không thể hoàn tất yêu cầu. Vui lòng thử lại.";
 }
 
+function isDirectStorageError(
+  error: unknown,
+): error is { readonly name: "DirectStorageError"; readonly status: number; readonly code?: string } {
+  return (
+    error instanceof Error &&
+    error.name === "DirectStorageError" &&
+    typeof (error as { status?: unknown }).status === "number"
+  );
+}
+
 export class CreditOpsApiClient implements CreditOpsApi {
   private readonly baseUrl: string;
 
   constructor(
-    baseUrl = process.env.NEXT_PUBLIC_CREDITOPS_API_URL ?? "",
+    baseUrl = BFF_BASE_URL,
     private readonly fetcher: Fetcher = fetch,
+    private readonly csrfTokenProvider: CsrfTokenProvider = readBrowserCsrfToken,
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
-  async listCases(): Promise<CreditCaseDto[]> {
+  async listCases(): Promise<CreditCaseListDto> {
     return parseCreditCaseList(await this.request("/api/v1/cases"));
   }
 
@@ -112,6 +129,10 @@ export class CreditOpsApiClient implements CreditOpsApi {
     const headers = new Headers(init.headers);
     headers.set("Accept", "application/json");
     if (init.body !== undefined) headers.set("Content-Type", "application/json");
+    if (isMutation(init.method)) {
+      const csrfToken = this.csrfTokenProvider();
+      if (csrfToken) headers.set(CSRF_HEADER_NAME, csrfToken);
+    }
 
     const response = await this.fetcher(`${this.baseUrl}${path}`, {
       ...init,
@@ -131,6 +152,24 @@ export class CreditOpsApiClient implements CreditOpsApi {
     }
     return body;
   }
+}
+
+function isMutation(method: string | undefined): boolean {
+  return method !== undefined && !["GET", "HEAD"].includes(method.toUpperCase());
+}
+
+function readBrowserCsrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  for (const part of document.cookie.split(";")) {
+    const index = part.indexOf("=");
+    if (index < 0 || part.slice(0, index).trim() !== CSRF_COOKIE_NAME) continue;
+    try {
+      return decodeURIComponent(part.slice(index + 1).trim());
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 async function parseJson(response: Response): Promise<unknown> {

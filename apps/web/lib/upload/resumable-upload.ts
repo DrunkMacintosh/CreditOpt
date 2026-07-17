@@ -1,5 +1,5 @@
 import type { ResumableUploadIntentDto } from "../api/contracts";
-import type { DirectUploadOptions } from "./signed-upload";
+import { DirectStorageError, type DirectUploadOptions } from "./signed-upload";
 
 const TUS_VERSION = "1.0.0";
 const CHUNK_SIZE = 6 * 1024 * 1024;
@@ -8,13 +8,26 @@ interface TusResponse {
   getHeader(name: string): string | null;
 }
 
+export interface ResumableUploadOptions extends DirectUploadOptions {
+  resumeUrl?: string;
+  onResumeUrl?: (uploadUrl: string) => void;
+}
+
 export async function uploadResumable(
   intent: ResumableUploadIntentDto,
   file: File,
-  options: DirectUploadOptions,
+  options: ResumableUploadOptions,
 ): Promise<void> {
-  const uploadLocation = await createTusUpload(intent, file, options);
-  let offset = 0;
+  const uploadLocation = options.resumeUrl
+    ? validateUploadLocation(options.resumeUrl, intent.uploadUrl)
+    : await createTusUpload(intent, file, options);
+  let offset = options.resumeUrl
+    ? await recoverTusOffset(intent, uploadLocation, file.size, options)
+    : 0;
+
+  if (file.size > 0) {
+    options.onProgress(Math.round((offset / file.size) * 100));
+  }
 
   while (offset < file.size) {
     if (options.signal.aborted) throw abortError();
@@ -38,10 +51,12 @@ export async function uploadResumable(
         );
       },
     );
-    const nextOffset = Number(response.getHeader("Upload-Offset"));
-    offset = Number.isFinite(nextOffset) && nextOffset > chunkStart
-      ? nextOffset
-      : chunkStart + chunk.size;
+    offset = parseTusOffset(
+      response.getHeader("Upload-Offset"),
+      chunkStart,
+      Math.min(chunkStart + chunk.size, file.size),
+      false,
+    );
   }
 
   options.onProgress(100);
@@ -50,7 +65,7 @@ export async function uploadResumable(
 async function createTusUpload(
   intent: ResumableUploadIntentDto,
   file: File,
-  options: DirectUploadOptions,
+  options: ResumableUploadOptions,
 ): Promise<string> {
   const headers: Record<string, string> = {
     ...intent.headers,
@@ -69,8 +84,51 @@ async function createTusUpload(
     options,
   );
   const location = response.getHeader("Location");
-  if (!location) throw new Error("TUS_LOCATION_MISSING");
-  return new URL(location, intent.uploadUrl).toString();
+  if (!location) throw new DirectStorageError(0, "TUS_LOCATION_MISSING");
+  const uploadLocation = validateUploadLocation(location, intent.uploadUrl);
+  options.onResumeUrl?.(uploadLocation);
+  return uploadLocation;
+}
+
+async function recoverTusOffset(
+  intent: ResumableUploadIntentDto,
+  uploadLocation: string,
+  fileSize: number,
+  options: ResumableUploadOptions,
+): Promise<number> {
+  const response = await xhrRequest(
+    "HEAD",
+    uploadLocation,
+    { ...intent.headers, "Tus-Resumable": TUS_VERSION },
+    null,
+    options,
+  );
+  return parseTusOffset(response.getHeader("Upload-Offset"), 0, fileSize, true);
+}
+
+function parseTusOffset(
+  rawOffset: string | null,
+  minimum: number,
+  maximum: number,
+  allowMinimum: boolean,
+): number {
+  if (rawOffset === null || !/^\d+$/.test(rawOffset)) {
+    throw new DirectStorageError(0, "TUS_OFFSET_INVALID");
+  }
+  const offset = Number(rawOffset);
+  const monotonic = allowMinimum ? offset >= minimum : offset > minimum;
+  if (!Number.isSafeInteger(offset) || !monotonic || offset > maximum) {
+    throw new DirectStorageError(0, "TUS_OFFSET_INVALID");
+  }
+  return offset;
+}
+
+function validateUploadLocation(location: string, endpoint: string): string {
+  const resolved = new URL(location, endpoint);
+  if (resolved.origin !== new URL(endpoint).origin) {
+    throw new DirectStorageError(0, "TUS_LOCATION_INVALID");
+  }
+  return resolved.toString();
 }
 
 function hasHeader(headers: Readonly<Record<string, string>>, name: string): boolean {
@@ -79,7 +137,7 @@ function hasHeader(headers: Readonly<Record<string, string>>, name: string): boo
 }
 
 function xhrRequest(
-  method: "POST" | "PATCH",
+  method: "HEAD" | "POST" | "PATCH",
   url: string,
   headers: Readonly<Record<string, string>>,
   body: XMLHttpRequestBodyInit | null,
@@ -106,12 +164,12 @@ function xhrRequest(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve({ getHeader: (name) => xhr.getResponseHeader(name) });
       } else {
-        reject(new Error("TUS_UPLOAD_FAILED"));
+        reject(new DirectStorageError(xhr.status));
       }
     };
     xhr.onerror = () => {
       cleanUp();
-      reject(new Error("DIRECT_UPLOAD_NETWORK_ERROR"));
+      reject(new DirectStorageError(0, "DIRECT_STORAGE_NETWORK_ERROR"));
     };
     xhr.onabort = () => {
       cleanUp();
