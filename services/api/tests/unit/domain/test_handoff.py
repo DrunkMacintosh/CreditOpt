@@ -9,6 +9,7 @@ from creditops.domain.documents import Document, DocumentVersion
 from creditops.domain.enums import FactDisposition
 from creditops.domain.evidence import (
     CandidateFact,
+    ConfirmationAuthority,
     ConfirmedFact,
     FactConfirmation,
     PageRegion,
@@ -18,10 +19,22 @@ from creditops.domain.handoffs import HandoffArtifact, validate_handoff
 from creditops.domain.tasks import TaskEnvelopeV1
 from creditops.domain.uploads import UploadIntent
 
+GRANTED_AT = datetime(2026, 7, 17, 9, 0, tzinfo=UTC)
+CONFIRMED_AT = GRANTED_AT + timedelta(minutes=5)
 
-def confirmed_fact() -> ConfirmedFact:
+
+def evidence_bundle(
+    *,
+    case_id: UUID,
+    case_version: int = 7,
+    disposition: FactDisposition = FactDisposition.ACCEPTED,
+    corrected_value: str | None = None,
+) -> tuple[CandidateFact, FactConfirmation, ConfirmedFact | None]:
+    officer_id = uuid4()
     candidate = CandidateFact(
         id=uuid4(),
+        case_id=case_id,
+        case_version=case_version,
         document_version_id=uuid4(),
         field_key="requested_amount",
         proposed_value="5000000000",
@@ -31,28 +44,39 @@ def confirmed_fact() -> ConfirmedFact:
     confirmation = FactConfirmation(
         id=uuid4(),
         candidate_id=candidate.id,
-        disposition=FactDisposition.ACCEPTED,
-        actor_id=uuid4(),
+        disposition=disposition,
+        authority=ConfirmationAuthority(
+            case_id=case_id,
+            case_version=case_version,
+            actor_id=officer_id,
+            assigned_officer_id=officer_id,
+            granted_at=GRANTED_AT,
+            source="CASE_ASSIGNMENT",
+        ),
+        confirmed_at=CONFIRMED_AT,
+        corrected_value=corrected_value,
     )
-    return ConfirmedFact.from_confirmation(
-        id=uuid4(),
-        candidate=candidate,
-        confirmation=confirmation,
-    )
+    fact = None
+    if disposition in {FactDisposition.ACCEPTED, FactDisposition.CORRECTED}:
+        fact = ConfirmedFact.from_confirmation(
+            id=uuid4(),
+            candidate=candidate,
+            confirmation=confirmation,
+        )
+    return candidate, confirmation, fact
 
 
-def handoff_artifact(
-    *,
-    open_candidate_ids: tuple[UUID, ...] = (),
-    unsupported_fact_ids: tuple[UUID, ...] = (),
-) -> HandoffArtifact:
+def handoff_artifact() -> HandoffArtifact:
+    case_id = uuid4()
+    candidate, confirmation, fact = evidence_bundle(case_id=case_id)
+    assert fact is not None
     return HandoffArtifact(
         id=uuid4(),
-        case_id=uuid4(),
+        case_id=case_id,
         case_version=7,
-        confirmed_facts=(confirmed_fact(),),
-        open_candidate_ids=open_candidate_ids,
-        unsupported_fact_ids=unsupported_fact_ids,
+        candidates=(candidate,),
+        confirmations=(confirmation,),
+        confirmed_facts=(fact,),
     )
 
 
@@ -65,42 +89,134 @@ def test_valid_handoff_is_bound_to_an_exact_case_version() -> None:
     assert "credit_decision" not in artifact.model_dump()
 
 
-def test_handoff_rejects_open_candidates() -> None:
-    with pytest.raises(ValidationError, match="open candidates"):
-        handoff_artifact(open_candidate_ids=(uuid4(),))
+def test_handoff_rejects_candidate_without_disposition() -> None:
+    case_id = uuid4()
+    first_candidate, first_confirmation, first_fact = evidence_bundle(case_id=case_id)
+    second_candidate, _, _ = evidence_bundle(case_id=case_id)
+    assert first_fact is not None
+
+    with pytest.raises(ValidationError, match="missing confirmation"):
+        HandoffArtifact(
+            id=uuid4(),
+            case_id=case_id,
+            case_version=7,
+            candidates=(first_candidate, second_candidate),
+            confirmations=(first_confirmation,),
+            confirmed_facts=(first_fact,),
+        )
 
 
-def test_handoff_rejects_unsupported_facts() -> None:
-    with pytest.raises(ValidationError, match="unsupported facts"):
-        handoff_artifact(unsupported_fact_ids=(uuid4(),))
+def test_handoff_rejects_duplicate_disposition_for_candidate() -> None:
+    case_id = uuid4()
+    candidate, confirmation, fact = evidence_bundle(case_id=case_id)
+    assert fact is not None
+    duplicate = confirmation.model_copy(update={"id": uuid4()})
+
+    with pytest.raises(ValidationError, match="exactly one disposition"):
+        HandoffArtifact(
+            id=uuid4(),
+            case_id=case_id,
+            case_version=7,
+            candidates=(candidate,),
+            confirmations=(confirmation, duplicate),
+            confirmed_facts=(fact,),
+        )
+
+
+def test_handoff_rejects_supported_confirmation_without_fact() -> None:
+    case_id = uuid4()
+    candidate, confirmation, _ = evidence_bundle(case_id=case_id)
+
+    with pytest.raises(ValidationError, match="confirmed fact"):
+        HandoffArtifact(
+            id=uuid4(),
+            case_id=case_id,
+            case_version=7,
+            candidates=(candidate,),
+            confirmations=(confirmation,),
+            confirmed_facts=(),
+        )
+
+
+def test_handoff_rejects_cross_case_fact() -> None:
+    artifact_case_id = uuid4()
+    candidate, confirmation, fact = evidence_bundle(case_id=artifact_case_id)
+    _, _, cross_case_fact = evidence_bundle(case_id=uuid4())
+    assert fact is not None
+    assert cross_case_fact is not None
+
+    with pytest.raises(ValidationError, match="case/version"):
+        HandoffArtifact(
+            id=uuid4(),
+            case_id=artifact_case_id,
+            case_version=7,
+            candidates=(candidate,),
+            confirmations=(confirmation,),
+            confirmed_facts=(cross_case_fact,),
+        )
+
+
+def test_handoff_rejects_fact_that_does_not_match_confirmation() -> None:
+    case_id = uuid4()
+    candidate, confirmation, fact = evidence_bundle(case_id=case_id)
+    assert fact is not None
+    unsupported_fact = fact.model_copy(update={"value": "unsupported"})
+
+    with pytest.raises(ValidationError, match="does not match confirmation"):
+        HandoffArtifact(
+            id=uuid4(),
+            case_id=case_id,
+            case_version=7,
+            candidates=(candidate,),
+            confirmations=(confirmation,),
+            confirmed_facts=(unsupported_fact,),
+        )
+
+
+def test_handoff_rejects_fact_without_source_region() -> None:
+    case_id = uuid4()
+    candidate, confirmation, fact = evidence_bundle(case_id=case_id)
+    assert fact is not None
+    unsupported_fact = fact.model_copy(update={"source": None})
+
+    with pytest.raises(ValidationError, match="source region"):
+        HandoffArtifact(
+            id=uuid4(),
+            case_id=case_id,
+            case_version=7,
+            candidates=(candidate,),
+            confirmations=(confirmation,),
+            confirmed_facts=(unsupported_fact,),
+        )
 
 
 def test_handoff_rejects_any_credit_decision_field() -> None:
+    artifact = handoff_artifact()
+
     with pytest.raises(ValidationError, match="credit_decision"):
         HandoffArtifact(
-            id=uuid4(),
-            case_id=uuid4(),
-            case_version=7,
-            confirmed_facts=(confirmed_fact(),),
+            **artifact.model_dump(),
             credit_decision="APPROVE",
         )
 
 
 def test_validate_handoff_rechecks_models_built_without_validation() -> None:
+    case_id = uuid4()
+    candidate, _, _ = evidence_bundle(case_id=case_id)
     artifact = HandoffArtifact.model_construct(
         id=uuid4(),
-        case_id=uuid4(),
+        case_id=case_id,
         case_version=7,
         state="READY_FOR_SPECIALIST_REVIEW",
-        confirmed_facts=(confirmed_fact(),),
-        open_candidate_ids=(uuid4(),),
-        unsupported_fact_ids=(),
+        candidates=(candidate,),
+        confirmations=(),
+        confirmed_facts=(),
         conflict_ids=(),
         gap_ids=(),
         stale=False,
     )
 
-    with pytest.raises(ValueError, match="open candidates"):
+    with pytest.raises(ValueError, match="missing confirmation"):
         validate_handoff(artifact)
 
 

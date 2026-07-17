@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -6,6 +7,7 @@ from creditops.domain.enums import FactDisposition
 from creditops.domain.ids import (
     ActorId,
     CandidateFactId,
+    CaseId,
     ConfirmedFactId,
     DocumentVersionId,
     FactConfirmationId,
@@ -30,10 +32,29 @@ class PageRegion(BaseModel):
         return self
 
 
+class ConfirmationAuthority(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    case_id: CaseId
+    case_version: int = Field(ge=1)
+    actor_id: ActorId
+    assigned_officer_id: ActorId
+    granted_at: datetime
+    source: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def actor_is_assigned_officer(self) -> Self:
+        if self.actor_id != self.assigned_officer_id:
+            raise ValueError("confirmation authority requires the assigned officer")
+        return self
+
+
 class CandidateFact(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: CandidateFactId
+    case_id: CaseId
+    case_version: int = Field(ge=1)
     document_version_id: DocumentVersionId
     field_key: str = Field(min_length=1)
     proposed_value: FactValue
@@ -47,7 +68,8 @@ class FactConfirmation(BaseModel):
     id: FactConfirmationId
     candidate_id: CandidateFactId
     disposition: FactDisposition
-    actor_id: ActorId
+    authority: ConfirmationAuthority
+    confirmed_at: datetime
     corrected_value: FactValue | None = None
 
     @model_validator(mode="after")
@@ -63,6 +85,8 @@ class ConfirmedFact(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: ConfirmedFactId
+    case_id: CaseId
+    case_version: int = Field(ge=1)
     candidate_id: CandidateFactId
     confirmation_id: FactConfirmationId
     document_version_id: DocumentVersionId
@@ -70,7 +94,16 @@ class ConfirmedFact(BaseModel):
     value: FactValue
     candidate_value: FactValue
     source: PageRegion
-    confirmed_by: ActorId
+    authority: ConfirmationAuthority
+    confirmed_at: datetime
+
+    @model_validator(mode="after")
+    def authority_matches_fact_version(self) -> Self:
+        if self.authority.case_id != self.case_id:
+            raise ValueError("confirmed fact authority does not match case")
+        if self.authority.case_version != self.case_version:
+            raise ValueError("confirmed fact authority does not match case version")
+        return self
 
     @classmethod
     def from_confirmation(
@@ -82,6 +115,10 @@ class ConfirmedFact(BaseModel):
     ) -> Self:
         if confirmation.candidate_id != candidate.id:
             raise ValueError("confirmation does not reference the candidate")
+        if confirmation.authority.case_id != candidate.case_id:
+            raise ValueError("confirmation authority does not match candidate case")
+        if confirmation.authority.case_version != candidate.case_version:
+            raise ValueError("confirmation authority does not match candidate case version")
         if confirmation.disposition is FactDisposition.ACCEPTED:
             value = candidate.proposed_value
         elif confirmation.disposition is FactDisposition.CORRECTED:
@@ -95,6 +132,8 @@ class ConfirmedFact(BaseModel):
 
         return cls(
             id=id,
+            case_id=candidate.case_id,
+            case_version=candidate.case_version,
             candidate_id=candidate.id,
             confirmation_id=confirmation.id,
             document_version_id=candidate.document_version_id,
@@ -102,5 +141,6 @@ class ConfirmedFact(BaseModel):
             value=value,
             candidate_value=candidate.proposed_value,
             source=candidate.source,
-            confirmed_by=confirmation.actor_id,
+            authority=confirmation.authority,
+            confirmed_at=confirmation.confirmed_at,
         )
