@@ -5,7 +5,7 @@ import zipfile
 from hashlib import sha256
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _MAX_FILE_BYTES: Final = 100 * 1024 * 1024
 _ALLOWED_MIME: Final = frozenset(
@@ -26,6 +26,14 @@ class SecureDocument(BaseModel):
     content_type: str
     size_bytes: int = Field(gt=0, le=_MAX_FILE_BYTES)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def content_integrity(self) -> SecureDocument:
+        if len(self.content) != self.size_bytes:
+            raise ValueError("document byte count does not match size_bytes")
+        if sha256(self.content).hexdigest() != self.sha256:
+            raise ValueError("document digest does not match sha256")
+        return self
 
 
 def _zip_is_supported(data: bytes, content_type: str) -> bool:

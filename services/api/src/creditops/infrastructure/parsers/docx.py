@@ -3,7 +3,8 @@ from __future__ import annotations
 import io
 import zipfile
 from uuid import UUID
-from xml.etree import ElementTree
+
+from defusedxml import ElementTree
 
 from creditops.application.stages.parse import ParsedDocument, ParsedRegion
 from creditops.application.stages.security import SecureDocument

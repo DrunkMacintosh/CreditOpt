@@ -7,7 +7,7 @@ import pytest
 from creditops.application.stages.classify import classify_document
 from creditops.application.stages.extract import ExtractionCandidate, validate_candidates
 from creditops.application.stages.parse import ParsedDocument, ParsedRegion
-from creditops.application.stages.security import validate_document_bytes
+from creditops.application.stages.security import SecureDocument, validate_document_bytes
 
 
 def _parsed() -> ParsedDocument:
@@ -26,10 +26,16 @@ def test_security_rejects_mismatched_content_type() -> None:
         validate_document_bytes(b"not-a-pdf", content_type="application/pdf")
 
 
+def test_secure_document_rejects_tampered_integrity_metadata() -> None:
+    document = validate_document_bytes(b"%PDF-1.7", content_type="application/pdf")
+    with pytest.raises(ValueError, match="digest"):
+        SecureDocument.model_validate({**document.model_dump(), "sha256": "0" * 64})
+
+
 def test_classifier_is_deterministic_and_does_not_make_a_credit_decision() -> None:
     result = classify_document(file_name="don_de_nghi_cap_tin_dung.pdf", parsed=_parsed())
     assert result.family == "CREDIT_REQUEST"
-    assert result.confidence == 1.0
+    assert result.confidence == 0.85
     assert "decision" not in result.model_dump_json().lower()
 
 

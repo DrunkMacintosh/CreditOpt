@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,9 +36,20 @@ _RULES: tuple[tuple[DocumentFamily, tuple[str, ...]], ...] = (
 
 
 def classify_document(*, file_name: str, parsed: ParsedDocument) -> Classification:
-    del parsed  # classification is deterministic and must not call a model implicitly
-    normalized = re.sub(r"[_\-.]+", " ", file_name.casefold())
+    normalized = _normalize(file_name)
     for family, keywords in _RULES:
         if any(keyword in normalized for keyword in keywords):
-            return Classification(family=family, confidence=1.0, method="filename-rules-v1")
+            return Classification(family=family, confidence=0.85, method="filename-rules-v1")
+    content = _normalize(" ".join(region.text for region in parsed.regions[:20]))
+    for family, keywords in _RULES:
+        if any(keyword in content for keyword in keywords):
+            return Classification(family=family, confidence=0.65, method="filename-rules-v1")
     return Classification(family="OTHER", confidence=0.0, method="manual-review")
+
+
+def _normalize(value: str) -> str:
+    without_marks = "".join(
+        char for char in unicodedata.normalize("NFKD", value.casefold())
+        if not unicodedata.combining(char)
+    )
+    return re.sub(r"[_\-.]+", " ", without_marks)

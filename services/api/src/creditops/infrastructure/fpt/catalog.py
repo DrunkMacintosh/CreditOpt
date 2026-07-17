@@ -23,7 +23,14 @@ class FPTCapabilityConfig(BaseModel):
     @classmethod
     def https_without_query(cls, value: str) -> str:
         parts = urlsplit(value)
-        if parts.scheme.lower() != "https" or not parts.hostname or parts.query or parts.fragment:
+        if (
+            parts.scheme.lower() != "https"
+            or not parts.hostname
+            or parts.username is not None
+            or parts.password is not None
+            or parts.query
+            or parts.fragment
+        ):
             raise ValueError("FPT endpoint URL must be an HTTPS URL without query or fragment")
         return value.rstrip("/")
 

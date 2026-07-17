@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import io
 import zipfile
+from typing import TYPE_CHECKING
 from uuid import UUID
-from xml.etree import ElementTree
+
+from defusedxml import ElementTree
+
+if TYPE_CHECKING:
+    from xml.etree.ElementTree import Element
 
 from creditops.application.stages.parse import ParsedDocument, ParsedRegion
 from creditops.application.stages.security import SecureDocument
@@ -35,8 +40,7 @@ class XlsxParser:
                     root = ElementTree.fromstring(archive.read(sheet_file))
                     for row_index, row in enumerate(root.iter(f"{_MAIN_NS}row"), start=1):
                         values = [
-                            self._cell_value(cell, shared)
-                            for cell in row.iter(f"{_MAIN_NS}c")
+                            self._cell_value(cell, shared) for cell in row.iter(f"{_MAIN_NS}c")
                         ]
                         text = " | ".join(value for value in values if value)
                         if text:
@@ -49,10 +53,7 @@ class XlsxParser:
                             regions.append(
                                 ParsedRegion(
                                     page=page,
-                                    text=(
-                                        f"{sheet_label} "
-                                        f"row {row_index}: {text}"
-                                    )[:100_000],
+                                    text=(f"{sheet_label} row {row_index}: {text}")[:100_000],
                                     x=0,
                                     y=min((row_index - 1) * 0.02, 0.98),
                                     width=1,
@@ -81,7 +82,7 @@ class XlsxParser:
         ]
 
     @staticmethod
-    def _cell_value(cell: ElementTree.Element, shared: list[str]) -> str:
+    def _cell_value(cell: Element, shared: list[str]) -> str:
         value = cell.find(f"{_MAIN_NS}v")
         if value is None or value.text is None:
             return ""

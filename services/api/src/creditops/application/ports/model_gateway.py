@@ -71,6 +71,7 @@ class VisionRequest(ModelCallContext):
 
 class EmbeddingRequest(ModelCallContext):
     texts: Sequence[str] = Field(min_length=1, max_length=128)
+    expected_dimension: int | None = Field(default=None, ge=1, le=8192)
 
 
 class InferenceUsage(BaseModel):
@@ -87,6 +88,8 @@ class InferenceResult(BaseModel):
 
     capability: str
     provider: Literal["FPT"]
+    case_id: UUID
+    document_version_id: UUID | None = None
     endpoint_id: str = Field(min_length=1)
     model_id: str = Field(min_length=1)
     payload: Any

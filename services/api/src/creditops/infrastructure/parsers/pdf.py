@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import re
+import io
 from uuid import UUID
 
 from creditops.application.stages.parse import ParsedDocument, ParsedRegion
@@ -15,28 +15,26 @@ class PdfParser:
             raise ValueError("PdfParser received a non-PDF document")
         regions: list[ParsedRegion] = []
         try:
-            from pypdf import PdfReader  # type: ignore[import-not-found]
+            from pypdf import PdfReader
 
-            reader = PdfReader(document.content)
+            reader = PdfReader(io.BytesIO(document.content))
             for number, page in enumerate(reader.pages, start=1):
                 text = (page.extract_text() or "").strip()
                 if text:
                     regions.append(
-                        ParsedRegion(page=number, text=text[:100_000], x=0, y=0, width=1, height=1)
+                        ParsedRegion(
+                            page=number,
+                            text=text[:100_000],
+                            x=0,
+                            y=0,
+                            width=1,
+                            height=1,
+                        )
                     )
-        except ImportError:
-            # Keep the local walking skeleton usable without optional PDF
-            # wheels.  This is intentionally a tiny literal-string reader for
-            # test fixtures; production images must include pypdf.
-            for number, page_bytes in enumerate(document.content.split(b"/Type /Page"), start=1):
-                text = " ".join(
-                    match.decode("utf-8", errors="ignore")
-                    for match in re.findall(rb"\(([^()]*)\)", page_bytes)
-                ).strip()
-                if text:
-                    regions.append(
-                        ParsedRegion(page=number, text=text[:100_000], x=0, y=0, width=1, height=1)
-                    )
+        except ImportError as exc:
+            raise ValueError(
+                "PDF parser dependency is unavailable; document requires manual review"
+            ) from exc
         except Exception as exc:
             raise ValueError("PDF parsing failed; document requires manual review") from exc
         return ParsedDocument(
