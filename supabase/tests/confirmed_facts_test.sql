@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions, pg_catalog;
 
-select plan(9);
+select plan(18);
 
 insert into public.credit_cases (id, case_version, workflow_state, created_by)
 values (
@@ -11,11 +11,12 @@ values (
   '00000000-0000-0000-0000-000000000001'
 );
 
-insert into public.case_assignments (case_id, officer_id, assigned_by)
+insert into public.case_assignments (case_id, officer_id, assigned_by, assigned_at)
 values (
   '10000000-0000-0000-0000-000000000001',
   '00000000-0000-0000-0000-000000000001',
-  '00000000-0000-0000-0000-000000000010'
+  '00000000-0000-0000-0000-000000000010',
+  clock_timestamp() - interval '10 seconds'
 );
 
 insert into public.documents (id, case_id, created_by)
@@ -82,6 +83,13 @@ values
     '61000000-0000-0000-0000-000000000001',
     '62000000-0000-0000-0000-000000000001',
     'synthetic.unreadable', '400'::jsonb, 0.6, 'SYNTHETIC_TEST'
+  ),
+  (
+    '63000000-0000-0000-0000-000000000005',
+    '10000000-0000-0000-0000-000000000001', 1,
+    '61000000-0000-0000-0000-000000000001',
+    '62000000-0000-0000-0000-000000000001',
+    'synthetic.revoked', '500'::jsonb, 0.5, 'SYNTHETIC_TEST'
   );
 
 insert into public.fact_confirmations (
@@ -225,6 +233,123 @@ select lives_ok(
     where id = '65000000-0000-0000-0000-000000000001'
   $$,
   'confirmed facts may only transition to stale without rewriting evidence'
+);
+
+select throws_ok(
+  $$
+    update public.page_regions
+    set x = 0.25, width = 0.25
+    where id = '62000000-0000-0000-0000-000000000001'
+  $$,
+  '42501',
+  null,
+  'confirmed source page coordinates are immutable'
+);
+
+select throws_ok(
+  $$delete from public.page_regions where id = '62000000-0000-0000-0000-000000000001'$$,
+  '42501',
+  null,
+  'confirmed source page regions cannot be deleted'
+);
+
+select throws_ok(
+  $$
+    update public.candidate_facts
+    set field_key = 'tampered.field',
+        proposed_value = '999'::jsonb,
+        page_region_id = '62000000-0000-0000-0000-000000000002'
+    where id = '63000000-0000-0000-0000-000000000001'
+  $$,
+  '42501',
+  null,
+  'candidate value, field, and provenance are immutable'
+);
+
+select lives_ok(
+  $$
+    update public.candidate_facts
+    set stale_at = clock_timestamp()
+    where id = '63000000-0000-0000-0000-000000000001'
+  $$,
+  'candidate stale_at is the only permitted mutation'
+);
+
+select throws_ok(
+  $$delete from public.candidate_facts where id = '63000000-0000-0000-0000-000000000001'$$,
+  '42501',
+  null,
+  'candidate facts cannot be deleted'
+);
+
+select throws_ok(
+  $$
+    update public.fact_confirmations
+    set disposition = 'CORRECTED',
+        corrected_value = '999'::jsonb,
+        confirmed_at = confirmed_at + interval '1 second'
+    where id = '64000000-0000-0000-0000-000000000001'
+  $$,
+  '42501',
+  null,
+  'confirmation disposition, correction, and time are immutable'
+);
+
+select throws_ok(
+  $$
+    delete from public.fact_confirmations
+    where id = '64000000-0000-0000-0000-000000000001'
+  $$,
+  '42501',
+  null,
+  'fact confirmations cannot be deleted'
+);
+
+select throws_ok(
+  $$
+    insert into public.fact_confirmations (
+      id, case_id, case_version, candidate_fact_id, disposition,
+      actor_id, assigned_officer_id, authority_source,
+      authority_granted_at, confirmed_at
+    ) values (
+      '64000000-0000-0000-0000-000000000005',
+      '10000000-0000-0000-0000-000000000001', 1,
+      '63000000-0000-0000-0000-000000000005', 'ACCEPTED',
+      '00000000-0000-0000-0000-000000000002',
+      '00000000-0000-0000-0000-000000000001', 'SYNTHETIC_TEST',
+      clock_timestamp() - interval '500 milliseconds',
+      clock_timestamp() - interval '100 milliseconds'
+    )
+  $$,
+  '23514',
+  null,
+  'only the assigned officer actor may record a fact confirmation'
+);
+
+update public.case_assignments
+set revoked_at = clock_timestamp() - interval '1 second'
+where case_id = '10000000-0000-0000-0000-000000000001'
+  and officer_id = '00000000-0000-0000-0000-000000000001';
+
+select throws_ok(
+  $$
+    insert into public.fact_confirmations (
+      id, case_id, case_version, candidate_fact_id, disposition,
+      actor_id, assigned_officer_id, authority_source,
+      authority_granted_at, confirmed_at
+    ) values (
+      '64000000-0000-0000-0000-000000000005',
+      '10000000-0000-0000-0000-000000000001', 1,
+      '63000000-0000-0000-0000-000000000005', 'ACCEPTED',
+      '00000000-0000-0000-0000-000000000001',
+      '00000000-0000-0000-0000-000000000001', 'SYNTHETIC_TEST',
+      clock_timestamp() - interval '500 milliseconds',
+      clock_timestamp() - interval '100 milliseconds'
+    )
+  $$,
+  '23514',
+  null,
+  'a revoked assignment cannot authorize a later fact confirmation'
 );
 
 select * from finish();

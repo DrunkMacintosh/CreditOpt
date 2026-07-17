@@ -144,6 +144,10 @@ create table public.page_regions (
 create index page_regions_document_page_idx
   on public.page_regions (document_version_id, page_number);
 
+create trigger page_regions_are_immutable
+before update or delete on public.page_regions
+for each row execute function public.reject_append_only_mutation();
+
 create table public.candidate_facts (
   id uuid primary key default gen_random_uuid(),
   case_id uuid not null references public.credit_cases(id) on delete restrict,
@@ -174,6 +178,65 @@ create table public.candidate_facts (
 
 create index candidate_facts_review_idx
   on public.candidate_facts (case_id, case_version, document_version_id, created_at);
+
+create or replace function public.protect_candidate_fact_provenance()
+returns trigger
+language plpgsql
+security invoker
+set search_path = pg_catalog
+as $$
+begin
+  if tg_op = 'DELETE' then
+    raise exception using
+      errcode = '42501',
+      message = 'candidate facts cannot be deleted';
+  end if;
+
+  if row(
+    new.id,
+    new.case_id,
+    new.case_version,
+    new.document_version_id,
+    new.page_region_id,
+    new.field_key,
+    new.proposed_value,
+    new.confidence,
+    new.extraction_method,
+    new.candidate_schema_version,
+    new.created_at
+  ) is distinct from row(
+    old.id,
+    old.case_id,
+    old.case_version,
+    old.document_version_id,
+    old.page_region_id,
+    old.field_key,
+    old.proposed_value,
+    old.confidence,
+    old.extraction_method,
+    old.candidate_schema_version,
+    old.created_at
+  ) then
+    raise exception using
+      errcode = '42501',
+      message = 'candidate fact provenance is immutable';
+  end if;
+
+  if old.stale_at is not null and new.stale_at is distinct from old.stale_at then
+    raise exception using
+      errcode = '42501',
+      message = 'candidate fact stale timestamp is immutable once set';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.protect_candidate_fact_provenance() from public;
+
+create trigger candidate_facts_protect_provenance
+before update or delete on public.candidate_facts
+for each row execute function public.protect_candidate_fact_provenance();
 
 create table public.fact_confirmations (
   id uuid primary key default gen_random_uuid(),
@@ -215,6 +278,63 @@ create table public.fact_confirmations (
     confirmed_at >= authority_granted_at and created_at >= confirmed_at
   )
 );
+
+create or replace function public.enforce_fact_confirmation_authority()
+returns trigger
+language plpgsql
+security invoker
+set search_path = pg_catalog
+as $$
+declare
+  assignment_is_active boolean;
+begin
+  if new.actor_id is distinct from new.assigned_officer_id then
+    raise exception using
+      errcode = '23514',
+      message = 'confirmation actor must be the assigned officer';
+  end if;
+
+  if new.authority_granted_at is null
+    or new.confirmed_at is null
+    or new.created_at is null
+    or new.authority_granted_at > new.confirmed_at
+    or new.confirmed_at > new.created_at then
+    raise exception using
+      errcode = '23514',
+      message = 'confirmation authority timestamps are out of order';
+  end if;
+
+  select exists (
+    select 1
+    from public.case_assignments as assignment
+    where assignment.case_id = new.case_id
+      and assignment.officer_id = new.assigned_officer_id
+      and assignment.assigned_at <= new.authority_granted_at
+      and (
+        assignment.revoked_at is null
+        or assignment.revoked_at > new.confirmed_at
+      )
+  ) into assignment_is_active;
+
+  if not assignment_is_active then
+    raise exception using
+      errcode = '23514',
+      message = 'assignment is not active for the confirmation authority interval';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.enforce_fact_confirmation_authority() from public;
+
+create trigger fact_confirmations_enforce_active_authority
+before insert on public.fact_confirmations
+for each row execute function public.enforce_fact_confirmation_authority();
+
+create trigger fact_confirmations_are_immutable
+before update or delete on public.fact_confirmations
+for each row execute function public.reject_append_only_mutation();
 
 create table public.confirmed_facts (
   id uuid primary key default gen_random_uuid(),
