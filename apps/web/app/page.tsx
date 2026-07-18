@@ -1,7 +1,9 @@
 import React from "react";
 
-const syntheticNotice =
-  "All customer data, policies, documents, and banking-system responses in this project are synthetic and created solely for demonstration.";
+import {
+  SYNTHETIC_DATA_NOTICE,
+  SYNTHETIC_DATA_NOTICE_VI,
+} from "../components/shell/synthetic-data-notice";
 
 export default function Home() {
   return (
@@ -15,7 +17,8 @@ export default function Home() {
         </p>
         <aside aria-label="Thông báo dữ liệu tổng hợp" className="notice">
           <strong>Phạm vi dữ liệu thử nghiệm</strong>
-          <span>{syntheticNotice}</span>
+          <span>{SYNTHETIC_DATA_NOTICE_VI}</span>
+          <span lang="en">{SYNTHETIC_DATA_NOTICE}</span>
         </aside>
       </section>
     </main>
