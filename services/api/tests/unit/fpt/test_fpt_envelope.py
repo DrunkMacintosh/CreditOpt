@@ -14,7 +14,10 @@ from typing import Any
 
 import pytest
 
-from creditops.application.ports.model_gateway import InferenceUnavailableError
+from creditops.application.ports.model_gateway import (
+    InferenceUnavailableError,
+    InferenceValidationError,
+)
 from creditops.infrastructure.fpt.client import FPTClient
 
 
@@ -73,3 +76,38 @@ def test_fpt_wrapped_embeddings_envelope_is_unwrapped_and_ordered() -> None:
     }
     result = FPTClient._embedding_response(wrapped)
     assert result["embeddings"] == [[0.1, 0.2], [0.3, 0.4]]
+
+
+def test_reasoning_content_used_when_content_is_null() -> None:
+    # DeepSeek-V4-Flash (observed live) returns the structured answer in
+    # message.reasoning_content with content=null.
+    body = {
+        "choices": [
+            {
+                "message": {
+                    "content": None,
+                    "reasoning_content": json.dumps(
+                        {"khach_hang": "An Phat", "so_tien": 2500000000}
+                    ),
+                }
+            }
+        ],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7},
+    }
+    result = FPTClient._chat_response(body)
+    assert result["output"]["khach_hang"] == "An Phat"
+
+
+def test_json_in_markdown_fence_is_extracted() -> None:
+    body = {"choices": [{"message": {"content": "```json\n{\"a\": 1}\n```"}}]}
+    assert FPTClient._chat_response(body)["output"] == {"a": 1}
+
+
+def test_json_after_think_block_is_extracted() -> None:
+    body = {"choices": [{"message": {"content": "<think>hmm</think>\n{\"b\": 2}"}}]}
+    assert FPTClient._chat_response(body)["output"] == {"b": 2}
+
+
+def test_content_without_any_json_is_validation_error() -> None:
+    with pytest.raises(InferenceValidationError):
+        FPTClient._chat_response({"choices": [{"message": {"content": "no json here"}}]})
