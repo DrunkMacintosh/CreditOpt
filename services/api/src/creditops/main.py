@@ -21,10 +21,12 @@ from creditops.api.errors import (
     validation_exception_handler,
 )
 from creditops.api.evidence_review import router as evidence_review_router
+from creditops.api.financing import router as financing_router
 from creditops.api.gap_requests import router as gap_requests_router
 from creditops.api.intake import router as intake_router
 from creditops.api.legal import router as legal_router
 from creditops.api.orchestration import router as orchestration_router
+from creditops.api.prospects import router as prospects_router
 from creditops.api.risk_review import router as risk_review_router
 from creditops.api.tasks import router as tasks_router
 from creditops.api.underwriting import router as underwriting_router
@@ -36,17 +38,19 @@ from creditops.config import Settings
 from creditops.infrastructure.gcp.cloud_run_dispatcher import CloudRunDispatcher
 from creditops.infrastructure.gcp.metadata_token import MetadataTokenProvider
 from creditops.infrastructure.postgres.credit_ops import PostgresCreditOpsRepository
-from creditops.infrastructure.postgres.gap_request_batches import (
-    PostgresGapRequestRepository,
-)
 from creditops.infrastructure.postgres.evidence_review import (
     PostgresEvidenceReviewRepository,
+)
+from creditops.infrastructure.postgres.financing import PostgresFinancingRepository
+from creditops.infrastructure.postgres.gap_request_batches import (
+    PostgresGapRequestRepository,
 )
 from creditops.infrastructure.postgres.intake import PostgresIntakeRepository
 from creditops.infrastructure.postgres.legal import PostgresLegalRepository
 from creditops.infrastructure.postgres.orchestration import (
     PostgresOrchestrationRepository,
 )
+from creditops.infrastructure.postgres.prospects import PostgresProspectRepository
 from creditops.infrastructure.postgres.repositories import PostgresUnitOfWorkFactory
 from creditops.infrastructure.postgres.risk_review import PostgresRiskReviewRepository
 from creditops.infrastructure.postgres.session import PsycopgConnectionFactory
@@ -178,6 +182,16 @@ def create_app(
         if database_connection_factory is not None
         else None
     )
+    application.state.financing_repository = (
+        PostgresFinancingRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
+    application.state.prospect_repository = (
+        PostgresProspectRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
     application.state.worker_dispatcher = (
         CloudRunDispatcher(
             project_id=cast(str, configured.gcp_project_id),
@@ -229,6 +243,8 @@ def create_app(
     application.include_router(intake_router)
     application.include_router(evidence_review_router)
     application.include_router(work_items_router)
+    application.include_router(financing_router)
+    application.include_router(prospects_router)
     return application
 
 

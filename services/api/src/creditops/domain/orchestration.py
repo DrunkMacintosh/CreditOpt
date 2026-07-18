@@ -41,16 +41,25 @@ class GateType(StrEnum):
     - ``G2_GAP_REQUEST_APPROVAL`` formal evidence-gap / customer-request approval.
     - ``G3_RISK_DISPOSITION``  human disposition of the checker's challenges.
     - ``G4_OPS_AUTHORIZATION``  human authorization of the proposed actions/memo.
+    - ``HG_FINANCING_NEED_CONFIRMED`` stage-2 confirmation of the versioned
+      financing request (master design section 5 stage 2).  PROPOSED synthetic
+      gate name; no official SHB mapping.  Human-satisfied only, like G2/G3/G4.
 
     Only ``G1`` may be satisfied by the engine (from the intake handoff).  Every
     other gate is satisfied exclusively by an authorized human disposition; no
     agent, plan, retry, or duplicate delivery may satisfy or bypass it.
+
+    NB (PROPOSED): ``HG_FINANCING_NEED_CONFIRMED`` is NOT a required_gate on any
+    task-graph node (application/orchestration/graph.py).  For now it is recorded
+    human state surfaced to the intake surface; whether intake-completion should
+    later REQUIRE it is a deferred decision, not wired here.
     """
 
     G1_INTAKE_COMPLETE = "G1_INTAKE_COMPLETE"
     G2_GAP_REQUEST_APPROVAL = "G2_GAP_REQUEST_APPROVAL"
     G3_RISK_DISPOSITION = "G3_RISK_DISPOSITION"
     G4_OPS_AUTHORIZATION = "G4_OPS_AUTHORIZATION"
+    HG_FINANCING_NEED_CONFIRMED = "HG_FINANCING_NEED_CONFIRMED"
 
 
 class GateStatus(StrEnum):

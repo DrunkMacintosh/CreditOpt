@@ -70,6 +70,14 @@ ALL_GATES: tuple[GateType, ...] = (
     GateType.G2_GAP_REQUEST_APPROVAL,
     GateType.G3_RISK_DISPOSITION,
     GateType.G4_OPS_AUTHORIZATION,
+    # Stage 2 (master design section 5 stage 2): the financing-need confirmation
+    # gate.  It takes the SAME stored-status-only, default-OPEN path below as
+    # G2/G3/G4 -- the engine never satisfies it; only an authorized human
+    # (api/financing.py confirm) can.  It is intentionally NOT a required_gate on
+    # any task-graph node (application/orchestration/graph.py), so adding it here
+    # records/surfaces its state without blocking any existing node.  PROPOSED:
+    # coupling intake-completion to it is a deferred decision, not wired yet.
+    GateType.HG_FINANCING_NEED_CONFIRMED,
 )
 
 
