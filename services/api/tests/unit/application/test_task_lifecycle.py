@@ -98,6 +98,10 @@ class FakeTasks(TaskRepository):
         del kwargs
         self.slot_taken = False
 
+    async def extend_task_lease(self, **kwargs: object) -> bool:
+        del kwargs
+        return True
+
     async def reclaim_stranded(self, **kwargs: object) -> tuple[UUID, ...]:
         self.reclaim_calls += 1
         return ()

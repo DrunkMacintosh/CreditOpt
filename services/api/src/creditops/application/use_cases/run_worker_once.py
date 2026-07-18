@@ -121,11 +121,22 @@ class RunWorkerOnce:
         slot_lease_seconds: int = 300,
         visibility_timeout_seconds: int = 300,
         retry_base_delay_seconds: int = 30,
+        heartbeat_interval_seconds: float | None = None,
     ) -> None:
         if slot_lease_seconds <= 0 or visibility_timeout_seconds <= 0:
             raise ValueError("worker lease durations must be positive")
         if retry_base_delay_seconds <= 0:
             raise ValueError("retry base delay must be positive")
+        # Renew the task/slot/visibility leases well before they expire.  A
+        # third of the slot lease leaves two missed beats of slack before a
+        # crashed worker's lease is reclaimed by ``reclaim_stranded``.
+        interval = (
+            heartbeat_interval_seconds
+            if heartbeat_interval_seconds is not None
+            else slot_lease_seconds / 3
+        )
+        if interval <= 0:
+            raise ValueError("heartbeat interval must be positive")
         self._tasks = tasks
         self._queue = queue
         self._registry = _as_registry(processor)
@@ -134,6 +145,7 @@ class RunWorkerOnce:
         self._slot_lease_seconds = slot_lease_seconds
         self._visibility_timeout_seconds = visibility_timeout_seconds
         self._retry_base_delay_seconds = retry_base_delay_seconds
+        self._heartbeat_interval_seconds = interval
 
     async def run_once(self) -> WorkerRunResult:
         lease_token = uuid4()
@@ -192,25 +204,49 @@ class RunWorkerOnce:
                 )
 
             claimed_task = task
-            async def heartbeat() -> None:
-                # Test doubles may inherit the Protocol (whose method body is
-                # only an ellipsis); call the heartbeat only when the concrete
-                # adapter implements it.
-                extend_slot = type(self._tasks).__dict__.get("extend_worker_slot")
-                if callable(extend_slot):
-                    renewed = await extend_slot(
+
+            def _own_method(name: str) -> Callable[..., Awaitable[bool]] | None:
+                # Test doubles may inherit the Protocol (whose method bodies are
+                # only an ellipsis); renew a lease only when the concrete adapter
+                # provides its own implementation.  ``getattr`` returns the bound
+                # method so the real repository is invoked with ``self``.
+                impl = type(self._tasks).__dict__.get(name)
+                return getattr(self._tasks, name) if callable(impl) else None
+
+            async def _renew() -> None:
+                # One heartbeat: renew the TASK lease, the worker slot, and the
+                # queue-message visibility, each fenced on the current lease
+                # token.  A lost or expired lease raises TaskLeaseLost so the
+                # caller abandons the in-flight work instead of writing under a
+                # reclaimed lease.
+                lease_until = self._clock() + timedelta(
+                    seconds=self._slot_lease_seconds
+                )
+                extend_task = _own_method("extend_task_lease")
+                if extend_task is not None:
+                    if not await extend_task(
+                        task_id=claimed_task.id,
+                        case_id=claimed_task.case_id,
+                        case_version=claimed_task.case_version,
+                        document_version_id=claimed_task.document_version_id,
+                        lease_token=lease_token,
+                        lease_until=lease_until,
+                    ):
+                        raise TaskLeaseLost("task lease is no longer owned")
+                extend_slot = _own_method("extend_worker_slot")
+                if extend_slot is not None:
+                    if not await extend_slot(
                         lease_owner=self._worker_id,
                         lease_token=lease_token,
-                        lease_until=self._clock() + timedelta(seconds=self._slot_lease_seconds),
-                    )
-                    if not renewed:
+                        lease_until=lease_until,
+                    ):
                         raise TaskLeaseLost("worker slot lease is no longer owned")
                 await self._queue.extend_visibility(
                     message.message_id,
                     visibility_timeout_seconds=self._visibility_timeout_seconds,
                 )
 
-            await heartbeat()
+            await _renew()
             latest = await self._tasks.latest_checkpoint(
                 task_id=claimed_task.id,
                 case_id=claimed_task.case_id,
@@ -237,11 +273,46 @@ class RunWorkerOnce:
                     checkpoint_schema_version="1",
                     checkpoint_data=checkpoint_data,
                 )
-                await heartbeat()
+                await _renew()
                 return latest
 
             processor = self._registry.processor_for(claimed_task.task_type)
-            result = await processor.process(claimed_task, latest, save_checkpoint)
+            process_task = asyncio.create_task(
+                processor.process(claimed_task, latest, save_checkpoint)
+            )
+
+            async def _heartbeat_loop() -> None:
+                # Renew on a bounded interval well below the lease so a long
+                # inference keeps its task lease.  The loop only ever exits by
+                # raising: a lost lease surfaces as TaskLeaseLost/StaleTaskError.
+                while True:
+                    await asyncio.sleep(self._heartbeat_interval_seconds)
+                    await _renew()
+
+            heartbeat_task = asyncio.create_task(_heartbeat_loop())
+            try:
+                await asyncio.wait(
+                    (process_task, heartbeat_task),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if process_task.done():
+                    result = process_task.result()
+                else:
+                    # The heartbeat completed first, which only happens when a
+                    # renewal reported a lost/expired lease.  Re-raise it so the
+                    # in-flight processor result is abandoned (no checkpoint / no
+                    # terminal write) and the delivery stays recoverable.
+                    heartbeat_task.result()
+                    raise TaskLeaseLost("task lease lost during processing")
+            finally:
+                # Structured concurrency: both children are always cancelled and
+                # awaited on the success, exception, AND cancellation paths so no
+                # task is left pending and no exception goes unretrieved.
+                heartbeat_task.cancel()
+                process_task.cancel()
+                await asyncio.gather(
+                    heartbeat_task, process_task, return_exceptions=True
+                )
             if result.status == WorkerOutcome.SUPERSEDED:
                 await self._tasks.mark_superseded(
                     task_id=claimed_task.id,

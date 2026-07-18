@@ -94,6 +94,48 @@ class PostgresTaskRepository(TaskRepository):
                 row = await cursor.fetchone()
         return row is not None
 
+    async def extend_task_lease(
+        self,
+        *,
+        task_id: UUID,
+        case_id: UUID,
+        case_version: int,
+        document_version_id: UUID | None,
+        lease_token: UUID,
+        lease_until: datetime,
+    ) -> bool:
+        # Renew a live task lease so a long provider call is not reclaimed by
+        # ``reclaim_stranded`` mid-flight.  The fence mirrors the terminal
+        # updates exactly (identity + case/document scope + RUNNING + owning
+        # lease token + unexpired lease); a missing row means the lease was
+        # already reclaimed or superseded, so the caller must abandon its work.
+        async with self._connection_factory() as connection:
+            async with connection.transaction():
+                cursor = await connection.execute(
+                    """
+                    update public.processing_tasks
+                    set lease_until = %s, updated_at = clock_timestamp()
+                    where id = %s and case_id = %s and case_version = %s
+                      and document_version_id is not distinct from %s
+                      and status = 'RUNNING'
+                      and lease_token = %s
+                      and lease_until > statement_timestamp()
+                    returning id
+                    """,
+                    (
+                        lease_until,
+                        task_id,
+                        case_id,
+                        case_version,
+                        document_version_id,
+                        lease_token,
+                    ),
+                )
+                row = await cursor.fetchone()
+        if row is None:
+            raise TaskLeaseLost("task lease is no longer owned")
+        return True
+
     async def claim(
         self,
         *,
