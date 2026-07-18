@@ -1,13 +1,10 @@
 import Link from "next/link";
 import React from "react";
 
-import {
-  SyntheticDataNotice,
-} from "../components/shell/synthetic-data-notice";
 import styles from "./landing.module.css";
 
 export const metadata = {
-  title: "SHB CreditOps EvidenceGraph — AI hỗ trợ chuẩn bị và phản biện hồ sơ",
+  title: "CreditOps EvidenceGraph — AI hỗ trợ chuẩn bị và phản biện hồ sơ",
   description:
     "Nền tảng evidence-first tổ chức hồ sơ cấp vốn lưu động SME thành một Credit Case Digital Twin có cấu trúc, phiên bản và chuỗi nguồn gốc. AI chuẩn bị và phản biện; con người quyết định.",
 };
@@ -69,7 +66,7 @@ const ROLES = [
 ];
 
 // The complete conceptual corporate-credit lifecycle (docs/BANKING_WORKFLOW.md).
-// The walking skeleton focuses on stages 2–6; the rest are context / later phase.
+// The platform focuses on stages 2–6; the rest are context / later phase.
 const STAGES = [
   { label: "Nhận diện & tiếp cận khách hàng", inScope: false },
   { label: "Xác định nhu cầu vốn", inScope: true },
@@ -142,7 +139,7 @@ export default function Home() {
 
       <header className={styles.topbar}>
         <Link
-          aria-label="SHB CreditOps EvidenceGraph"
+          aria-label="CreditOps EvidenceGraph"
           className="brand"
           href="/"
         >
@@ -169,7 +166,7 @@ export default function Home() {
                 Evidence-first · Vốn lưu động SME
               </p>
               <h1 className={styles.heroTitle} id="hero-title">
-                SHB CreditOps EvidenceGraph
+                CreditOps EvidenceGraph
               </h1>
               <p className={styles.heroTagline}>
                 AI hỗ trợ chuẩn bị và phản biện hồ sơ — con người đưa ra quyết
@@ -322,9 +319,9 @@ export default function Home() {
                 Vòng đời 14 giai đoạn
               </h2>
               <p className={styles.sectionLede}>
-                Luồng tín dụng doanh nghiệp khái niệm gồm 14 giai đoạn. Walking
-                skeleton hiện tập trung ở giai đoạn 2–6; đây là bối cảnh dự án,
-                không phải quy trình chính thức của SHB.
+                Luồng tín dụng doanh nghiệp gồm 14 giai đoạn; nền tảng hiện tập
+                trung vào giai đoạn 2–6. Đây là bối cảnh dự án, không phải quy
+                trình chính thức của một ngân hàng cụ thể.
               </p>
             </div>
             <ol className={styles.stageStrip}>
@@ -345,7 +342,7 @@ export default function Home() {
                 <span
                   className={`${styles.legendSwatch} ${styles.legendSwatchScope}`}
                 />
-                Trong phạm vi walking skeleton (2–6)
+                Giai đoạn trọng tâm (2–6)
               </span>
               <span className={styles.legendItem}>
                 <span className={styles.legendSwatch} />
@@ -403,9 +400,11 @@ export default function Home() {
               ))}
             </ol>
             <p className={styles.archNote}>
-              Đây là topology mục tiêu đã xác nhận, không phải sơ đồ của một môi
-              trường đang chạy. Chưa có Supabase, Cloud Run, Vercel hay FPT nào
-              được provision và kiểm chứng end-to-end trong workspace này.
+              Kiến trúc này đã được triển khai trên Vercel (web), Cloud Run (API
+              và worker) và Supabase (dữ liệu, hàng đợi, lưu trữ). FPT AI Factory
+              cung cấp suy luận; output của model có schema, được kích hoạt theo
+              cổng benchmark và không trở thành sự thật hay phê duyệt nếu chưa
+              qua kiểm chứng và cổng con người.
             </p>
           </div>
         </section>
@@ -413,27 +412,37 @@ export default function Home() {
 
       <footer className={styles.footer}>
         <div className={styles.inner}>
-          <SyntheticDataNotice />
+          <aside
+            aria-label="Thông báo dữ liệu tổng hợp"
+            className="synthetic-notice"
+          >
+            <span aria-hidden="true" className="notice-mark">
+              S
+            </span>
+            <div>
+              <strong>Dữ liệu tổng hợp</strong>
+              <p>
+                Dữ liệu khách hàng, chính sách, tài liệu và phản hồi hệ thống
+                ngân hàng trong nền tảng là dữ liệu tổng hợp (synthetic).
+              </p>
+            </div>
+          </aside>
           <ul className={styles.footerBoundaries}>
             <li className={styles.footerBoundary}>
-              Nội dung synthetic trong dự án không phải chính sách chính thức của
-              SHB.
-            </li>
-            <li className={styles.footerBoundary}>
-              Đây không phải hệ thống production và chưa sẵn sàng cho vận hành
-              thực tế.
+              Con người có thẩm quyền đưa ra mọi quyết định tín dụng; agent chuẩn
+              bị và phản biện, không phê duyệt hay từ chối.
             </li>
             <li className={styles.footerBoundary}>
               Mọi tích hợp với hệ thống ngân hàng đều là mô phỏng có nhãn.
             </li>
             <li className={styles.footerBoundary}>
-              Con người có thẩm quyền đưa ra mọi quyết định tín dụng; dự án không
-              đại diện cho sự phê duyệt hoặc bảo chứng của SHB.
+              Nền tảng không đại diện cho sự phê duyệt hoặc bảo chứng của bất kỳ
+              ngân hàng nào.
             </li>
           </ul>
           <p className={styles.footerMeta}>
-            SHB CreditOps EvidenceGraph · Walking skeleton evidence-first cho
-            chuẩn bị và rà soát hồ sơ vốn lưu động SME.
+            CreditOps EvidenceGraph · Nền tảng evidence-first cho chuẩn bị và rà
+            soát hồ sơ vốn lưu động SME.
           </p>
         </div>
       </footer>

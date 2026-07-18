@@ -3,10 +3,6 @@ import "@testing-library/jest-dom/vitest";
 import React from "react";
 
 import Home from "../app/page";
-import {
-  SYNTHETIC_DATA_NOTICE,
-  SYNTHETIC_DATA_NOTICE_VI,
-} from "../components/shell/synthetic-data-notice";
 
 // The eight specialist roles must all be named on the landing page
 // (task brief; README multi-agent architecture with authority boundary).
@@ -24,7 +20,7 @@ const ROLE_NAMES = [
 it("renders the hero heading with the product name", () => {
   render(<Home />);
   expect(
-    screen.getByRole("heading", { name: "SHB CreditOps EvidenceGraph" }),
+    screen.getByRole("heading", { name: "CreditOps EvidenceGraph" }),
   ).toBeVisible();
 });
 
@@ -38,10 +34,13 @@ it("exposes both hero CTAs with the correct hrefs", () => {
   ).toHaveAttribute("href", "/ho-so");
 });
 
-it("shows the canonical synthetic notice verbatim in both languages", () => {
+it("shows a truthful synthetic-data label on the landing page", () => {
   render(<Home />);
-  expect(screen.getByText(SYNTHETIC_DATA_NOTICE_VI)).toBeVisible();
-  expect(screen.getByText(SYNTHETIC_DATA_NOTICE)).toBeVisible();
+  expect(
+    screen.getByText(
+      /Dữ liệu khách hàng, chính sách, tài liệu và phản hồi hệ thống ngân hàng trong nền tảng là dữ liệu tổng hợp/,
+    ),
+  ).toBeVisible();
 });
 
 it("names all eight specialist agent roles", () => {
