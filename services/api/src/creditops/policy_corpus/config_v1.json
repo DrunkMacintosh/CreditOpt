@@ -1,0 +1,9 @@
+{
+  "corpus_id": "SHB-SYNTHETIC-POLICY-CORPUS",
+  "version": "v1",
+  "documents_file": "documents_v1.json",
+  "checksum_sha256": "2bad8a80bf0b2352569bbe7e29cf6af46426c3e7a366da7d901e26c3b61cdede",
+  "is_synthetic": true,
+  "disclaimer_vi": "Chính sách tổng hợp (synthetic) — không phải chính sách chính thức của SHB.",
+  "disclaimer_en": "All policies in this corpus are synthetic and created solely for demonstration; none of them is an official SHB policy."
+}

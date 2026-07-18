@@ -18,6 +18,7 @@ from creditops.api.errors import (
     unexpected_exception_handler,
     validation_exception_handler,
 )
+from creditops.api.legal import router as legal_router
 from creditops.api.orchestration import router as orchestration_router
 from creditops.api.tasks import router as tasks_router
 from creditops.api.underwriting import router as underwriting_router
@@ -25,6 +26,7 @@ from creditops.api.uploads import router as uploads_router
 from creditops.application.ports.storage import StoragePort
 from creditops.application.unit_of_work import UnitOfWorkFactory
 from creditops.config import Settings
+from creditops.infrastructure.postgres.legal import PostgresLegalRepository
 from creditops.infrastructure.postgres.orchestration import (
     PostgresOrchestrationRepository,
 )
@@ -122,6 +124,11 @@ def create_app(
         if database_connection_factory is not None
         else None
     )
+    application.state.legal_repository = (
+        PostgresLegalRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
 
     @application.middleware("http")
     async def assign_correlation_id(
@@ -149,6 +156,7 @@ def create_app(
     application.include_router(tasks_router)
     application.include_router(orchestration_router)
     application.include_router(underwriting_router)
+    application.include_router(legal_router)
     return application
 
 
