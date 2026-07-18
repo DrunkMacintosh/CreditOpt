@@ -162,11 +162,14 @@ describe("CreditOps JSON BFF", () => {
     expect(response.status).toBe(200);
     const [url, init] = fetcher.mock.calls[0];
     expect(url).toBe("https://creditops-api.invalid/api/v1/cases");
+    // Authorization carries the Google Cloud Run OIDC id token (the platform
+    // invoker check on a --no-allow-unauthenticated service); the app session
+    // JWT rides separately in X-CreditOps-Authorization.
     expect(new Headers(init.headers).get("authorization")).toBe(
-      "Bearer workforce-token",
-    );
-    expect(new Headers(init.headers).get("x-serverless-authorization")).toBe(
       "Bearer test-cloud-run-id-token",
+    );
+    expect(new Headers(init.headers).get("x-creditops-authorization")).toBe(
+      "Bearer workforce-token",
     );
     expect(new Headers(init.headers).has("cookie")).toBe(false);
     expect(response.headers.get("x-request-id")).toBe("request-1");

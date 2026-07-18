@@ -1,17 +1,124 @@
-import React from "react";
+"use client";
 
+import React, { useCallback, useEffect, useRef, useState } from "react";
+
+import type { TaskStatus } from "../../lib/api/contracts";
+import { orchestrationApi } from "../../lib/api/orchestration";
 import type { UploadItem } from "../../lib/upload/upload-machine";
 import { EvidenceChip, shortReference } from "../cases/evidence-chip";
 import styles from "./upload-progress.module.css";
 
-interface UploadProgressProps {
-  item: UploadItem;
-  onCancel: (id: string) => void;
-  onRetry: (id: string) => void;
+// Background processing status is a live, moving target after the completion
+// response registers the document (PENDING -> RUNNING -> a terminal state) —
+// it must never be shown as a single frozen snapshot. This mirrors the
+// orchestration console's poll pattern (components/orchestration/
+// orchestration-console.tsx): a bounded, ~4s recursive setTimeout that stops
+// the moment a terminal status is observed, and never fabricates progress on
+// a transient poll failure.
+const POLL_INTERVAL_MS = 4000;
+const MAX_POLL_CYCLES = 20;
+
+const TERMINAL_TASK_STATUSES = new Set<TaskStatus>([
+  "SUCCEEDED",
+  "FAILED_MANUAL_REVIEW",
+  "SUPERSEDED",
+]);
+const KNOWN_TASK_STATUSES = new Set<TaskStatus>([
+  "PENDING",
+  "RUNNING",
+  "RETRY_WAIT",
+  "SUCCEEDED",
+  "FAILED_MANUAL_REVIEW",
+  "SUPERSEDED",
+]);
+
+function asKnownTaskStatus(value: string): TaskStatus | null {
+  return (KNOWN_TASK_STATUSES as ReadonlySet<string>).has(value) ? (value as TaskStatus) : null;
 }
 
-export function UploadProgress({ item, onCancel, onRetry }: UploadProgressProps) {
+function isTerminal(status: TaskStatus | null): boolean {
+  return status !== null && TERMINAL_TASK_STATUSES.has(status);
+}
+
+async function defaultGetTaskStatus(taskId: string): Promise<string> {
+  return (await orchestrationApi.getTask(taskId)).status;
+}
+
+interface UploadProgressProps {
+  item: UploadItem & { taskId?: string | null };
+  onCancel: (id: string) => void;
+  onRetry: (id: string) => void;
+  // Injectable for tests; defaults to the real GET /api/v1/tasks/{taskId}
+  // read (allowlisted in creditops-bff.ts) via the orchestration BFF client.
+  getTaskStatus?: (taskId: string) => Promise<string>;
+}
+
+export function UploadProgress({
+  item,
+  onCancel,
+  onRetry,
+  getTaskStatus = defaultGetTaskStatus,
+}: UploadProgressProps) {
   const cancellable = item.status === "REQUESTING_INTENT" || item.status === "UPLOADING";
+  const [liveTaskStatus, setLiveTaskStatus] = useState<TaskStatus | null>(item.taskStatus);
+
+  useEffect(() => {
+    setLiveTaskStatus(item.taskStatus);
+  }, [item.taskStatus]);
+
+  const mountedRef = useRef(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const poll = useCallback(
+    async (taskId: string, remaining: number) => {
+      if (!mountedRef.current) return;
+      let nextStatus: TaskStatus | null = null;
+      try {
+        const raw = await getTaskStatus(taskId);
+        nextStatus = asKnownTaskStatus(raw);
+      } catch {
+        // Transient poll failure: keep showing the last known status and try
+        // again on the next cycle rather than surfacing noise or faking
+        // success.
+      }
+      if (!mountedRef.current) return;
+      if (nextStatus !== null) setLiveTaskStatus(nextStatus);
+      if (isTerminal(nextStatus)) return;
+      if (remaining > 0) {
+        timerRef.current = setTimeout(() => {
+          void poll(taskId, remaining - 1);
+        }, POLL_INTERVAL_MS);
+      }
+    },
+    [getTaskStatus],
+  );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const taskId = item.taskId;
+    if (
+      item.status === "REGISTERED" &&
+      taskId &&
+      !isTerminal(item.taskStatus)
+    ) {
+      timerRef.current = setTimeout(() => {
+        void poll(taskId, MAX_POLL_CYCLES - 1);
+      }, POLL_INTERVAL_MS);
+    }
+    return () => {
+      mountedRef.current = false;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+    // Only (re)starts polling when the item first becomes a registered task
+    // with a fresh taskId; `poll` schedules its own subsequent cycles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.status, item.taskId]);
+
+  const displayItem = { ...item, taskStatus: liveTaskStatus };
+
   return (
     <li className={styles.item}>
       <div className={styles.heading}>
@@ -37,8 +144,8 @@ export function UploadProgress({ item, onCancel, onRetry }: UploadProgressProps)
         </div>
       ) : null}
 
-      <p aria-live="polite" className={`${styles.state} ${stateTone(item)}`}>
-        {statusText(item)}
+      <p aria-live="polite" className={`${styles.state} ${stateTone(displayItem)}`}>
+        {statusText(displayItem)}
       </p>
 
       {item.status === "DUPLICATE" && item.duplicateOfDocumentId ? (

@@ -407,7 +407,7 @@ describe("UploadZone", () => {
 
 describe("Vietnamese API errors", () => {
   it.each([
-    [401, "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."],
+    [401, "Phiên demo đã hết hạn. Vui lòng quay lại trang chủ và bắt đầu lại demo."],
     [403, "Bạn không có quyền thực hiện thao tác này trên hồ sơ."],
     [409, "Dữ liệu đã thay đổi hoặc thao tác bị trùng. Vui lòng tải lại."],
     [413, "Tài liệu vượt quá dung lượng được phép."],

@@ -73,7 +73,10 @@ export function getVietnameseApiError(error: unknown): string {
     }
     switch (error.status) {
       case 401:
-        return "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.";
+        // Judges are anonymous demo actors, not accounts — there is nothing
+        // to "log back into"; the only recovery is minting a fresh demo
+        // session from the landing page.
+        return "Phiên demo đã hết hạn. Vui lòng quay lại trang chủ và bắt đầu lại demo.";
       case 403:
         return "Bạn không có quyền thực hiện thao tác này trên hồ sơ.";
       case 404:

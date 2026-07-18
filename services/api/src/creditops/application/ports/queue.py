@@ -117,6 +117,27 @@ class TaskRepository(Protocol):
         lease_until: datetime,
     ) -> bool: ...
 
+    async def extend_task_lease(
+        self,
+        *,
+        task_id: UUID,
+        case_id: UUID,
+        case_version: int,
+        document_version_id: UUID | None,
+        lease_token: UUID,
+        lease_until: datetime,
+    ) -> bool:
+        """Renew a still-owned task lease during a long-running stage.
+
+        The UPDATE is fenced on the immutable task identity, the current
+        ``case_version``/``document_version_id`` scope, ``status = 'RUNNING'``,
+        the caller's ``lease_token`` and ``lease_until > statement_timestamp()``
+        (still owned and unexpired).  It returns ``True`` when the row is
+        renewed; a missing row means the lease was reclaimed or superseded and
+        raises :class:`TaskLeaseLost`.
+        """
+        ...
+
     async def reclaim_stranded(self, *, now: datetime) -> tuple[UUID, ...]:
         """Recover tasks a crashed worker left ``RUNNING`` past their lease.
 

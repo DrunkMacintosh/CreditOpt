@@ -84,6 +84,10 @@ class ResumableTasks:
         del kwargs
         self.slot = False
 
+    async def extend_task_lease(self, **kwargs):
+        del kwargs
+        return True
+
     async def reclaim_stranded(self, **kwargs):
         del kwargs
         return ()

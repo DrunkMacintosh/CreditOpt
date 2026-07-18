@@ -1,5 +1,8 @@
-// The future identity callback must issue this with HttpOnly, Secure,
-// SameSite=Strict, Path=/, and no Domain. This BFF never issues the token cookie.
+// The identity-issuing callback is app/api/demo-session/route.ts (via
+// lib/server/demo-session.ts): it mints __Host-creditops-workforce with
+// HttpOnly, Secure, SameSite=Lax, Path=/, and no Domain. This module never
+// issues the token cookie itself — it only ever reads it back out to forward
+// upstream.
 import { getCloudRunServerlessAuthorization } from "./cloud-run-auth";
 
 export const SESSION_COOKIE_NAME = "__Host-creditops-workforce";
@@ -132,10 +135,15 @@ export async function proxyCreditOpsRequest(
     body = JSON.stringify(canonicalBody);
   }
 
+  // Cloud Run runs with --no-allow-unauthenticated: the standard Authorization
+  // header must carry the Google OIDC id token so the platform invoker check
+  // passes. The app-level session JWT rides in X-CreditOps-Authorization
+  // instead; require_actor reads that header first and only falls back to
+  // Authorization when it is absent (services/api/.../auth dependency).
   const upstreamHeaders = new Headers({
     accept: "application/json",
-    authorization: `Bearer ${token}`,
-    "x-serverless-authorization": `Bearer ${serverlessToken}`,
+    authorization: `Bearer ${serverlessToken}`,
+    "x-creditops-authorization": `Bearer ${token}`,
   });
   if (hasBody) upstreamHeaders.set("content-type", "application/json");
   if (idempotencyKey && validOpaqueHeader(idempotencyKey)) {

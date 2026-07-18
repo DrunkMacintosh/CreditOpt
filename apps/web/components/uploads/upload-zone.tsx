@@ -30,18 +30,25 @@ interface UploadZoneProps {
   transport?: DirectUploadTransport;
 }
 
+// UploadItem (lib/upload/upload-machine.ts) carries only the one-shot
+// taskStatus snapshot from the completion response. UploadProgress polls the
+// task forward from there (PENDING -> RUNNING -> a terminal state), which
+// needs the task's own id — tracked locally here rather than widening the
+// shared upload-machine type.
+type ManagedUploadItem = UploadItem & { taskId: string | null };
+
 export function UploadZone({
   caseId,
   canUpload,
   api = creditOpsApi,
   transport = directUploadTransport,
 }: UploadZoneProps) {
-  const [items, setItems] = useState<UploadItem[]>([]);
+  const [items, setItems] = useState<ManagedUploadItem[]>([]);
   const controllers = useRef(new Map<string, AbortController>());
   const sessions = useRef(new Map<string, UploadSession>());
   const sequence = useRef(0);
 
-  function update(id: string, patch: Partial<UploadItem>) {
+  function update(id: string, patch: Partial<ManagedUploadItem>) {
     setItems((current) =>
       current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     );
@@ -60,7 +67,8 @@ export function UploadZone({
         error: validationError,
         duplicateOfDocumentId: null,
         taskStatus: null,
-      } satisfies UploadItem;
+        taskId: null,
+      } satisfies ManagedUploadItem;
     });
     setItems((current) => [...current, ...nextItems]);
     for (const item of nextItems) {
@@ -167,6 +175,7 @@ export function UploadZone({
           status: "REGISTERED",
           duplicateOfDocumentId: null,
           taskStatus: result.task.status,
+          taskId: result.task.id,
         });
       } else {
         throw new Error("UPLOAD_COMPLETION_INVALID_OUTCOME");
