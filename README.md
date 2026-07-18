@@ -20,6 +20,43 @@ CreditOpt hiện là một **local walking skeleton**, chưa phải hệ thống
 
 Repository này không chứa chính sách SHB chính thức, không chứng minh tuân thủ pháp lý, không đại diện cho sự phê duyệt của SHB và không cho phép sử dụng dữ liệu khách hàng/ngân hàng thật. Nội dung không phải tư vấn hoặc ý kiến pháp lý; pháp chế/người có thẩm quyền phải xác định văn bản áp dụng từ nguồn chính thức còn hiệu lực.
 
+## Vì sao bài toán này quan trọng
+
+Một nhu cầu vốn lưu động có thể kéo theo nhiều phiên bản tài liệu pháp lý, tài chính, sao kê, hợp đồng, phương án vốn và tài sản bảo đảm. Trước khi con người có đủ thông tin để xem xét, nhiều vai trò phải tìm dữ kiện, đối chiếu chéo, yêu cầu bổ sung, thực hiện phép tính và dựng lại dấu vết nguồn. Bottleneck mà CreditOpt nhắm tới không phải quyền quyết định tín dụng; đó là **năng lực biến hồ sơ phân mảnh thành một package có thể kiểm chứng**.
+
+Tầm quan trọng vượt ra ngoài một bước xử lý nội bộ:
+
+- DNNVV chiếm khoảng **98% trong gần 930.000 doanh nghiệp đang hoạt động tại Việt Nam** theo Bộ Kế hoạch và Đầu tư năm 2024; đây là khu vực quan trọng đối với tăng trưởng, việc làm và đổi mới sáng tạo ([MPI, 2024](https://mpi.gov.vn/portal/Pages/2024-8-28/Bo-truong-Nguyen-Chi-Dung-doanh-nghiep-nho-va-vua-lyv5l6.aspx)).
+- World Bank Enterprise Survey 2023 ghi nhận **21,2% doanh nghiệp Việt Nam được khảo sát xem tiếp cận tài chính là trở ngại lớn nhất**; tỷ lệ ở doanh nghiệp vừa là **30,7%** ([World Bank, 2023](https://www.enterprisesurveys.org/content/dam/enterprisesurveys/documents/country/Viet-Nam-2023.pdf)). Khảo sát không bao phủ doanh nghiệp siêu nhỏ dưới 5 lao động và không chứng minh nguyên nhân đến từ quy trình hồ sơ.
+- NHNN ghi nhận các tổ chức tín dụng đang ứng dụng AI, machine learning và dữ liệu lớn để tự động hóa quy trình, tối ưu vận hành và phục vụ khách hàng; đồng thời nhấn mạnh an ninh, an toàn trong chuyển đổi số ngân hàng ([NHNN, 2025](https://www.sbv.gov.vn/vi/web/sbv_portal/w/sbv622854)).
+- Basel Committee lưu ý AI/ML trong tài chính đặt ra rủi ro về explainability, bias, accountability và phụ thuộc bên thứ ba; governance hiệu quả vẫn là nền tảng ([BCBS, 2024](https://www.bis.org/bcbs/publ/d575.pdf)). Điều này củng cố lý do EvidenceGraph, human confirmation và authority firewall phải là phần lõi, không phải lớp kiểm soát thêm sau cùng.
+
+**Suy luận sản phẩm:** nếu evidence được chuẩn hóa sớm, lỗi thiếu/mâu thuẫn được phát hiện trước và mỗi kết luận giữ đúng nguồn, ngân hàng có thể tăng chất lượng chuẩn bị hồ sơ mà không hạ thấp human gate. Tác động thực tế vẫn phải được chứng minh bằng benchmark và pilot; repository không tuyên bố số tiết kiệm hoặc ROI chưa đo.
+
+## Hữu dụng đối với từng vai trò
+
+| Người dùng | CreditOpt hỗ trợ | Giá trị kỳ vọng cần đo |
+|---|---|---|
+| Relationship & Intake | Review candidate facts theo đúng trang/vùng; xử lý thiếu và mâu thuẫn | Ít tìm kiếm, nhập lại và phát hiện thiếu muộn |
+| Underwriter | Dùng confirmed facts, deterministic calculations và cited findings | Dành nhiều thời gian hơn cho judgment và scenario analysis |
+| Legal/Compliance/Collateral | Review evidence, controlled checks và exact policy citations | Thấy rõ nguồn, version và điểm cần người có thẩm quyền kết luận |
+| Independent Risk | Challenge maker trên cùng evidence map nhưng execution độc lập | Không phải tái dựng nguồn; challenge dễ theo dõi và disposition |
+| Operations/Approver | Nhận package, gaps, challenges và artifact version rõ ràng | Review nhất quán hơn; tránh hành động trên output stale |
+| Audit/Governance | Theo lineage từ tài liệu đến fact, finding, challenge và human action | Audit trail được tạo trong workflow thay vì dựng lại sau sự kiện |
+
+Giá trị sẽ được đánh giá bằng time-to-ready-for-review, số lần bổ sung hồ sơ, manual touches/case, citation precision, calculation exactness, gap/conflict precision–recall, officer throughput và cost/latency/token mỗi hồ sơ. Gate bypass, cross-case leakage và unauthorized mutation phải bằng `0`.
+
+## Bối cảnh thị trường và định vị
+
+Thị trường đã xác thực hai nhóm nhu cầu liền kề: nền tảng commercial lending quản lý origination–underwriting–portfolio như [nCino](https://www.ncino.com/solutions/commercial-lending), và intelligent document processing cho loan documents như [ABBYY Document AI](https://www.abbyy.com/document-ai/). CreditOpt không tuyên bố thay thế các hệ thống này và cũng không khẳng định đối thủ thiếu các control tương tự.
+
+**Market thesis cần kiểm chứng:** khoảng trống phù hợp với CreditOpt nằm giữa document extraction/chatbot và hệ thống nghiệp vụ — một evidence-and-control layer cho agentic work, nơi shared state có version, phép tính là deterministic, maker–checker được mã hóa, và con người giữ thẩm quyền.
+
+- **Initial wedge:** chuẩn bị và rà soát hồ sơ vốn lưu động SME/KHDN, tập trung stages 2–6.
+- **Buyer hypothesis:** khối KHDN/SME, Credit Operations, Risk Transformation hoặc Digital Transformation; buyer và procurement path chưa được xác nhận.
+- **Land-and-expand hypothesis:** mở rộng dọc stages 7–14, sau đó tái sử dụng protocol evidence/task/audit cho sản phẩm tín dụng và nghiệp vụ evidence-heavy khác.
+- **Không có TAM/SAM/SOM đáng tin cậy trong repository:** market sizing phải chờ dữ liệu về số hồ sơ, cost/case, turnaround time, volume và willingness-to-pay thực tế.
+
 ## 60 giây để hiểu điểm khác biệt
 
 Ba innovations đã có code cục bộ và có thể kiểm tra trực tiếp:
@@ -32,6 +69,9 @@ Graph-guided RAG, structured reasoning inheritance và Digital Twin đủ 14 gia
 
 ## Mục lục
 
+- [Vì sao bài toán này quan trọng](#vì-sao-bài-toán-này-quan-trọng)
+- [Hữu dụng đối với từng vai trò](#hữu-dụng-đối-với-từng-vai-trò)
+- [Bối cảnh thị trường và định vị](#bối-cảnh-thị-trường-và-định-vị)
 - [Bài toán](#bài-toán)
 - [Giải pháp](#giải-pháp)
 - [Tính năng](#tính-năng)
@@ -39,6 +79,7 @@ Graph-guided RAG, structured reasoning inheritance và Digital Twin đủ 14 gia
 - [Đội ngũ agent](#đội-ngũ-agent)
 - [Quy trình tín dụng 14 giai đoạn](#quy-trình-tín-dụng-14-giai-đoạn)
 - [Kiến trúc](#kiến-trúc)
+- [Khả năng mở rộng](#khả-năng-mở-rộng)
 - [Công nghệ](#công-nghệ)
 - [Cấu trúc repository](#cấu-trúc-repository)
 - [Chạy local](#chạy-local)
@@ -293,6 +334,20 @@ flowchart TD
     R --> O["Credit Operations package"]
     O --> G["Human consideration gate"]
 ```
+
+## Khả năng mở rộng
+
+Khả năng scale dưới đây là thuộc tính của **kiến trúc mục tiêu**, chưa phải kết quả production hoặc load-test:
+
+| Chiều scale | Cơ chế thiết kế | Điều cần chứng minh |
+|---|---|---|
+| Workload | API, document workers và agent workers scale độc lập; queue, lease, checkpoint, idempotency và version fence hỗ trợ retry | Concurrency, SLA, queue recovery, database/FPT quotas và cost/case |
+| Nghiệp vụ | Thêm document schema, deterministic tool, policy corpus và role contract mà không đổi authority core | Official workflow, policy, RACI, regression suite và governance approval |
+| Model | Capability gateway tách workflow khỏi model name; route chỉ mở sau benchmark-pass record | Chất lượng tiếng Việt, grounding, schema reliability, latency, data handling và giá |
+| Governance | Case-scoped access, immutable versions, maker–checker và human gate dùng chung | Tenant contract, identity integration, access review, audit/retention và recovery tests |
+| Vòng đời | Protocol task/evidence/artifact/audit tái sử dụng từ stages 2–6 sang 7–14 | Domain contracts, integration sandbox và human authority cho từng stage |
+
+[Cloud Run](https://docs.cloud.google.com/run/docs/overview/what-is-cloud-run) hỗ trợ dịch vụ autoscaling và jobs song song; [FPT AI Inference](https://docs.fptcloud.com/vi/docs/fpt-ai-factory/services/ai-inference/overview/) cung cấp model qua API endpoint với pay-as-you-go và autoscaling theo tài liệu nhà cung cấp. Đây là năng lực hạ tầng tham chiếu, không phải bằng chứng CreditOpt đã deploy hoặc đạt mức tải cụ thể.
 
 ## Công nghệ
 
