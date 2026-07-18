@@ -130,7 +130,7 @@ async def test_caller_context_cannot_replace_trusted_prompt() -> None:
 
 
 @pytest.mark.asyncio
-async def test_structured_output_is_enforced_with_json_schema() -> None:
+async def test_structured_output_is_enforced_with_json_object() -> None:
     transport = FakeTransport([_chat_body({"answer": "ok"})])
     gateway = _gateway(transport)
     schema = {"type": "object", "required": ["answer"]}
@@ -142,10 +142,10 @@ async def test_structured_output_is_enforced_with_json_schema() -> None:
     )
     await gateway.reason(request)
     response_format = transport.request_bodies[0]["response_format"]
-    assert response_format["type"] == "json_schema"
-    assert response_format["json_schema"]["name"] == "result"
-    assert response_format["json_schema"]["strict"] is True
-    assert response_format["json_schema"]["schema"] == schema
+    assert response_format == {"type": "json_object"}
+    # The required schema is carried in the trusted system message.
+    system_content = transport.request_bodies[0]["messages"][0]["content"]
+    assert "answer" in system_content
 
 
 @pytest.mark.asyncio

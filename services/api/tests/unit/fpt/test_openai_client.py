@@ -78,7 +78,7 @@ def _chat_body(content: Any, usage: Mapping[str, Any] | None = None) -> dict[str
 
 
 @pytest.mark.asyncio
-async def test_chat_request_is_openai_shaped_with_strict_schema() -> None:
+async def test_chat_request_is_openai_shaped_with_schema() -> None:
     transport = RecordingTransport(body=_chat_body(json.dumps({"answer": "ok"})))
     client = _client(_chat_config(), transport)
     schema = {"type": "object", "required": ["answer"]}
@@ -90,14 +90,13 @@ async def test_chat_request_is_openai_shaped_with_strict_schema() -> None:
     sent = transport.request_json[0]
     assert sent["model"] == "qwen3-benchmark-gated"
     assert sent["temperature"] == 0
-    assert sent["messages"] == [
-        {"role": "system", "content": "TRUSTED"},
-        {"role": "user", "content": "UNTRUSTED"},
-    ]
-    assert sent["response_format"] == {
-        "type": "json_schema",
-        "json_schema": {"name": "result", "schema": schema, "strict": True},
-    }
+    # The required structure rides in the TRUSTED system message (not the
+    # untrusted user turn) and output is constrained with json_object mode.
+    assert sent["messages"][0]["role"] == "system"
+    assert sent["messages"][0]["content"].startswith("TRUSTED")
+    assert "answer" in sent["messages"][0]["content"]
+    assert sent["messages"][1] == {"role": "user", "content": "UNTRUSTED"}
+    assert sent["response_format"] == {"type": "json_object"}
     # The bearer token is present; no secret is otherwise placed in the body.
     assert transport.requests[0].headers["authorization"] == "Bearer secret-key"
     assert "secret-key" not in transport.requests[0].content.decode()

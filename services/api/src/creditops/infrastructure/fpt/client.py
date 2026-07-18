@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -79,8 +80,24 @@ class FPTClient:
         constrained with strict structured output.
         """
 
+        system_content = payload["system"]
+        schema = payload.get("schema")
+        if schema is not None:
+            # Carry the required structure in the TRUSTED system role (not the
+            # untrusted user document) and constrain output with the widely
+            # supported json_object mode.  Strict json_schema mode is not
+            # honoured by every OpenAI-compatible server; the recovered object
+            # is still schema-validated by the gateway, so a lenient request
+            # never widens what a compromised model can express.
+            system_content = (
+                f"{system_content}\n\n"
+                "Chỉ trả về DUY NHẤT một đối tượng JSON hợp lệ, đúng theo JSON "
+                "Schema dưới đây. Không kèm giải thích, không markdown, không thẻ "
+                "suy nghĩ.\n"
+                f"{json.dumps(dict(schema), ensure_ascii=False)}"
+            )
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": payload["system"]},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": payload["user"]},
         ]
         request: dict[str, Any] = {
@@ -88,16 +105,8 @@ class FPTClient:
             "messages": messages,
             "temperature": 0,
         }
-        schema = payload.get("schema")
         if schema is not None:
-            request["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "result",
-                    "schema": dict(schema),
-                    "strict": True,
-                },
-            }
+            request["response_format"] = {"type": "json_object"}
         return request
 
     @staticmethod
@@ -176,12 +185,17 @@ class FPTClient:
         if not isinstance(message, Mapping):
             raise InferenceValidationError("FPT chat message is malformed")
         content = message.get("content")
-        if not isinstance(content, str):
-            raise InferenceValidationError("FPT chat content was not text")
-        try:
-            output = json.loads(content)
-        except ValueError as exc:
-            raise InferenceValidationError("FPT chat content was not valid JSON") from exc
+        if not isinstance(content, str) or not content.strip():
+            # Reasoning models (e.g. DeepSeek-V4 Think modes) return the answer in
+            # ``reasoning_content`` with ``content`` null. Fall back to it: we
+            # still extract ONLY the JSON object and schema-validate it, so no raw
+            # reasoning is ever persisted or handed downstream.
+            reasoning = message.get("reasoning_content")
+            if isinstance(reasoning, str) and reasoning.strip():
+                content = reasoning
+            else:
+                raise InferenceValidationError("FPT chat content was not text")
+        output = _extract_json_object(content)
         result: dict[str, Any] = {"output": output}
         usage = _map_usage(body.get("usage"))
         if usage is not None:
@@ -215,6 +229,45 @@ class FPTClient:
         if usage is not None:
             result["usage"] = usage
         return result
+
+
+_THINK_RE = re.compile(r"<think\b[^>]*>.*?</think>", re.DOTALL | re.IGNORECASE)
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
+
+
+def _extract_json_object(content: str) -> Any:
+    """Recover a single JSON object from possibly-decorated model content.
+
+    Reasoning models wrap the answer in ``<think>...</think>``, in markdown code
+    fences, or with surrounding prose; not every OpenAI-compatible server honours
+    ``response_format`` strictly.  This tries, in order: the fenced block, the
+    whole (think-stripped) text, and the first balanced ``{...}`` span.  The
+    recovered object is still schema-validated by the gateway, so extraction
+    never widens what a compromised model can express.  Fails closed with
+    ``InferenceValidationError`` (feeding the gateway repair/retry path) when no
+    JSON object is present.
+    """
+
+    text = _THINK_RE.sub("", content).strip()
+    candidates: list[str] = []
+    fence = _FENCE_RE.search(text)
+    if fence:
+        candidates.append(fence.group(1).strip())
+    candidates.append(text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end > start:
+        candidates.append(text[start : end + 1])
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            parsed = json.loads(candidate)
+        except ValueError:
+            continue
+        if isinstance(parsed, Mapping):
+            return parsed
+    raise InferenceValidationError("FPT chat content did not contain a JSON object")
 
 
 def _unwrap_fpt_envelope(body: Mapping[str, Any]) -> Mapping[str, Any]:
