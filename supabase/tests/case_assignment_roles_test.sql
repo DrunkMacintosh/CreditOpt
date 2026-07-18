@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions, pg_catalog;
 
-select plan(4);
+select plan(6);
 
 insert into public.credit_cases (id, case_version, workflow_state, created_by)
 values (
@@ -76,6 +76,18 @@ select throws_ok(
   '23505',
   null,
   'a duplicate (case, officer, role) assignment is rejected'
+);
+
+-- The redundant flat-key FK from fact_confirmations is gone; the ACTIVE-
+-- assignment trigger remains the (stronger) enforcement layer.
+select hasnt_fk(
+  'public', 'fact_confirmations', 'fact_confirmations_assignment_fk',
+  'the flat-assignment FK was dropped with the flat unique key'
+);
+
+select has_trigger(
+  'public', 'fact_confirmations', 'fact_confirmations_enforce_active_authority',
+  'the active-authority trigger still guards confirmations'
 );
 
 select * from finish();

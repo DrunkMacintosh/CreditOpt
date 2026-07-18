@@ -50,6 +50,17 @@ alter table public.case_assignments
 -- Replace the flat one-officer-per-case uniqueness with per-role uniqueness so an
 -- officer may hold several distinct roles while duplicate (case, officer, role) rows
 -- stay rejected. The original constraint name comes from 202607170002.
+--
+-- fact_confirmations_assignment_fk (202607170004) depended on the flat unique
+-- key and must go first.  It is a REDUNDANT, weaker layer: the
+-- fact_confirmations_enforce_active_authority trigger already requires an
+-- ACTIVE (non-revoked) assignment for the confirming officer — strictly
+-- stronger than this FK, which never checked revoked_at.  With multi-role
+-- assignments (case_id, officer_id) is no longer unique, so this FK form
+-- cannot exist at all; the trigger remains the enforcement layer.
+alter table public.fact_confirmations
+  drop constraint fact_confirmations_assignment_fk;
+
 alter table public.case_assignments
   drop constraint case_assignments_case_officer_key;
 
