@@ -39,6 +39,7 @@ from creditops.application.orchestration.processors import (
 from creditops.application.ports.queue import QueuePort, TaskRepository
 from creditops.application.risk_review.checker import RunCheckerInference
 from creditops.application.risk_review.processor import IndependentRiskReviewProcessor
+from creditops.application.stages.ingestion_processor import DocumentIngestionProcessor
 from creditops.application.underwriting.maker import RunUnderwritingInference
 from creditops.application.underwriting.processor import CreditUnderwritingProcessor
 from creditops.application.use_cases.dispatch_outbox import DispatchOutbox
@@ -56,6 +57,9 @@ from creditops.infrastructure.fpt.client import FPTClient
 from creditops.infrastructure.fpt.gateway import FPTInferenceGateway
 from creditops.infrastructure.mock.legal_checks import MockControlledChecksGateway
 from creditops.infrastructure.postgres.credit_ops import PostgresCreditOpsRepository
+from creditops.infrastructure.postgres.document_ingestion import (
+    PostgresDocumentIngestionRepository,
+)
 from creditops.infrastructure.postgres.legal import PostgresLegalRepository
 from creditops.infrastructure.postgres.orchestration import (
     PostgresOrchestrationRepository,
@@ -70,6 +74,7 @@ from creditops.infrastructure.supabase.queue import (
     AGENT_TASK_QUEUE_NAME,
     SupabaseQueue,
 )
+from creditops.infrastructure.supabase.storage import SupabaseStorage
 from creditops.observability import configure_structured_logging, log_event
 
 _logger = logging.getLogger(__name__)
@@ -141,6 +146,22 @@ def build_runtime(
     processors: dict[TaskType, TaskProcessor] = {
         TaskType.ORCHESTRATOR_PLAN: OrchestratorPlanProcessor(
             advance, dispatch=DispatchOutbox(orchestration, agent_queue)
+        ),
+        # DOCUMENT_INGESTION requires BOTH private storage and a
+        # benchmark-passed inference route; anything less resolves to the
+        # manual-review fallback (fail closed, never a partial pipeline).
+        **(
+            {
+                TaskType.DOCUMENT_INGESTION: DocumentIngestionProcessor(
+                    port=PostgresDocumentIngestionRepository(connection_factory),
+                    storage=SupabaseStorage(settings),
+                    gateway=reasoning,
+                )
+            }
+            if reasoning is not None
+            and settings.supabase_url
+            and settings.supabase_service_role_key
+            else {}
         ),
         TaskType.CREDIT_UNDERWRITING: CreditUnderwritingProcessor(
             PostgresUnderwritingRepository(connection_factory),
