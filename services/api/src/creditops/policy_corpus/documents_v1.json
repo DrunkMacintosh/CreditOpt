@@ -1,0 +1,90 @@
+{
+  "documents": [
+    {
+      "document_id": "tham_quyen_ky_ket",
+      "title_vi": "Thẩm quyền ký kết hợp đồng tín dụng (tổng hợp - synthetic)",
+      "clauses": [
+        {
+          "clause_id": "TQKK-01",
+          "text_vi": "Người đại diện theo pháp luật của doanh nghiệp hoặc người được ủy quyền hợp lệ bằng văn bản mới có thẩm quyền ký kết hợp đồng tín dụng và các văn kiện bảo đảm liên quan."
+        },
+        {
+          "clause_id": "TQKK-02",
+          "text_vi": "Văn bản ủy quyền ký kết phải còn hiệu lực tại thời điểm ký, nêu rõ phạm vi ủy quyền và được xác nhận bởi người đại diện theo pháp luật."
+        },
+        {
+          "clause_id": "TQKK-03",
+          "text_vi": "Trường hợp doanh nghiệp có nhiều người đại diện theo pháp luật, hồ sơ phải xác định rõ người có thẩm quyền ký kết đối với giao dịch tín dụng cụ thể."
+        }
+      ]
+    },
+    {
+      "document_id": "tai_san_bao_dam",
+      "title_vi": "Tài sản bảo đảm — hồ sơ pháp lý tối thiểu (tổng hợp - synthetic)",
+      "clauses": [
+        {
+          "clause_id": "TSBD-01",
+          "text_vi": "Hồ sơ tài sản bảo đảm phải có Giấy chứng nhận quyền sử dụng đất/quyền sở hữu tài sản hợp lệ, còn hiệu lực, đứng tên bên bảo đảm hoặc người được ủy quyền hợp pháp."
+        },
+        {
+          "clause_id": "TSBD-02",
+          "text_vi": "Hợp đồng thế chấp/cầm cố tài sản bảo đảm phải được lập bằng văn bản và, đối với bất động sản, phải được công chứng và đăng ký giao dịch bảo đảm theo quy định."
+        },
+        {
+          "clause_id": "TSBD-03",
+          "text_vi": "Biên bản định giá tài sản bảo đảm phải do bộ phận/đơn vị định giá độc lập lập, còn trong thời hạn hiệu lực theo chính sách nội bộ."
+        },
+        {
+          "clause_id": "TSBD-04",
+          "text_vi": "Trường hợp tài sản bảo đảm thuộc sở hữu chung, hồ sơ phải có văn bản đồng ý của tất cả đồng sở hữu."
+        }
+      ]
+    },
+    {
+      "document_id": "kyc_ho_so_phap_ly",
+      "title_vi": "KYC — hồ sơ pháp lý khách hàng doanh nghiệp (tổng hợp - synthetic)",
+      "clauses": [
+        {
+          "clause_id": "KYC-01",
+          "text_vi": "Hồ sơ pháp lý khách hàng phải bao gồm Giấy chứng nhận đăng ký doanh nghiệp còn hiệu lực và thông tin cập nhật về người đại diện theo pháp luật."
+        },
+        {
+          "clause_id": "KYC-02",
+          "text_vi": "Kết quả kiểm tra danh sách cảnh báo (watchlist) và phòng chống rửa tiền (AML) phải được thực hiện trước khi hoàn tất thẩm định pháp lý; kết quả 'HIT' phải được chuyển cấp có thẩm quyền xem xét, không tự động loại trừ khách hàng."
+        },
+        {
+          "clause_id": "KYC-03",
+          "text_vi": "Thông tin chủ sở hữu hưởng lợi (beneficial owner) phải được đối chiếu nhất quán giữa hồ sơ đăng ký doanh nghiệp và tài liệu tài sản bảo đảm liên quan."
+        }
+      ]
+    },
+    {
+      "document_id": "giao_dich_ben_lien_quan",
+      "title_vi": "Giao dịch với bên liên quan (tổng hợp - synthetic)",
+      "clauses": [
+        {
+          "clause_id": "GDBLQ-01",
+          "text_vi": "Giao dịch tín dụng với bên liên quan của khách hàng phải được nhận diện và ghi nhận rõ ràng trong hồ sơ thẩm định pháp lý."
+        },
+        {
+          "clause_id": "GDBLQ-02",
+          "text_vi": "Kết quả kiểm tra bên liên quan có phát hiện (HIT) phải được nêu như một khả năng ngoại lệ chính sách để cấp có thẩm quyền xem xét, không được tự động kết luận vi phạm."
+        }
+      ]
+    },
+    {
+      "document_id": "tinh_trang_phap_ly_doanh_nghiep",
+      "title_vi": "Tình trạng pháp lý doanh nghiệp (tổng hợp - synthetic)",
+      "clauses": [
+        {
+          "clause_id": "TTPL-01",
+          "text_vi": "Doanh nghiệp phải đang trong tình trạng hoạt động hợp lệ theo Giấy chứng nhận đăng ký doanh nghiệp; tình trạng tạm ngừng, giải thể hoặc phá sản là dấu hiệu cần chuyển xem xét ngoại lệ."
+        },
+        {
+          "clause_id": "TTPL-02",
+          "text_vi": "Mọi thay đổi thông tin đăng ký doanh nghiệp trọng yếu (vốn điều lệ, người đại diện, ngành nghề) phải được đối chiếu với hồ sơ tín dụng hiện hành."
+        }
+      ]
+    }
+  ]
+}

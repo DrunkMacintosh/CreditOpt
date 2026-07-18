@@ -12,23 +12,29 @@ from starlette.types import ExceptionHandler
 
 from creditops.api.auth import JwtVerifier, RemoteJwksKeyResolver
 from creditops.api.cases import router as cases_router
+from creditops.api.credit_ops import router as credit_ops_router
 from creditops.api.errors import (
     ApiException,
     api_exception_handler,
     unexpected_exception_handler,
     validation_exception_handler,
 )
+from creditops.api.legal import router as legal_router
 from creditops.api.orchestration import router as orchestration_router
+from creditops.api.risk_review import router as risk_review_router
 from creditops.api.tasks import router as tasks_router
 from creditops.api.underwriting import router as underwriting_router
 from creditops.api.uploads import router as uploads_router
 from creditops.application.ports.storage import StoragePort
 from creditops.application.unit_of_work import UnitOfWorkFactory
 from creditops.config import Settings
+from creditops.infrastructure.postgres.credit_ops import PostgresCreditOpsRepository
+from creditops.infrastructure.postgres.legal import PostgresLegalRepository
 from creditops.infrastructure.postgres.orchestration import (
     PostgresOrchestrationRepository,
 )
 from creditops.infrastructure.postgres.repositories import PostgresUnitOfWorkFactory
+from creditops.infrastructure.postgres.risk_review import PostgresRiskReviewRepository
 from creditops.infrastructure.postgres.session import PsycopgConnectionFactory
 from creditops.infrastructure.postgres.tasks import PostgresTaskRepository
 from creditops.infrastructure.postgres.underwriting import (
@@ -122,6 +128,21 @@ def create_app(
         if database_connection_factory is not None
         else None
     )
+    application.state.legal_repository = (
+        PostgresLegalRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
+    application.state.risk_review_repository = (
+        PostgresRiskReviewRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
+    application.state.credit_ops_repository = (
+        PostgresCreditOpsRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
 
     @application.middleware("http")
     async def assign_correlation_id(
@@ -149,6 +170,9 @@ def create_app(
     application.include_router(tasks_router)
     application.include_router(orchestration_router)
     application.include_router(underwriting_router)
+    application.include_router(legal_router)
+    application.include_router(risk_review_router)
+    application.include_router(credit_ops_router)
     return application
 
 
