@@ -92,6 +92,29 @@ class OutboxEventRow:
     dispatched_at: datetime | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class AuditEventRow:
+    """One row of the immutable, append-only case audit trail (read side).
+
+    Mirrors ``public.audit_events`` (see
+    supabase/migrations/202607170002_cases_assignments_audit.sql). Rows span
+    every case version -- the audit timeline is a whole-case history, not
+    scoped to the latest version.  ``event_data`` passes through as-is: the
+    writers only ever store metadata there, never secrets or prompts.
+    """
+
+    id: UUID
+    case_id: UUID
+    case_version: int
+    event_type: str
+    actor_type: str
+    actor_id: UUID | None
+    artifact_type: str
+    artifact_id: UUID
+    event_data: Mapping[str, object]
+    created_at: datetime
+
+
 class OrchestrationRepository(Protocol):
     async def load_snapshot(self, case_id: UUID) -> OrchestrationSnapshot | None: ...
 
@@ -140,3 +163,7 @@ class OrchestrationRepository(Protocol):
     async def mark_outbox_dispatched(self, event_id: UUID) -> None: ...
 
     async def record_outbox_dispatch_failure(self, event_id: UUID) -> None: ...
+
+    async def list_audit_events(
+        self, case_id: UUID, *, cursor: UUID | None, limit: int
+    ) -> tuple[tuple[AuditEventRow, ...], UUID | None]: ...

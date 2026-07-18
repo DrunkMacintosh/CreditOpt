@@ -18,6 +18,7 @@ from psycopg.types.json import Jsonb
 
 from creditops.application.orchestration.roles import CASE_ORCHESTRATOR_ROLE
 from creditops.application.ports.orchestration import (
+    AuditEventRow,
     BlockingGap,
     CreatedTask,
     GateRecord,
@@ -393,6 +394,63 @@ class PostgresOrchestrationRepository:
                         Jsonb(event_data),
                     ),
                 )
+
+    async def list_audit_events(
+        self, case_id: UUID, *, cursor: UUID | None, limit: int
+    ) -> tuple[tuple[AuditEventRow, ...], UUID | None]:
+        # Newest-first, keyset-paginated by (created_at, id) descending. The
+        # cursor row's own (created_at, id) is resolved via a subselect in
+        # this SAME query -- no separate round trip -- scoped to this case_id
+        # so a cursor for another case (or a deleted/unknown id) simply
+        # yields an empty page rather than leaking cross-case position.
+        position_clause = ""
+        params: list[object] = [case_id]
+        if cursor is not None:
+            position_clause = """
+              and (created_at, id) < (
+                select created_at, id
+                from public.audit_events
+                where id = %s and case_id = %s
+              )
+            """
+            params.extend([cursor, case_id])
+        params.append(limit + 1)
+
+        async with self._connection_factory() as connection:
+            result = await connection.execute(
+                f"""
+                select id, case_id, case_version, event_type, actor_type,
+                       actor_id, artifact_type, artifact_id, event_data,
+                       created_at
+                from public.audit_events
+                where case_id = %s
+                {position_clause}
+                order by created_at desc, id desc
+                limit %s
+                """,
+                params,
+            )
+            rows = await result.fetchall()
+
+        records = tuple(_audit_event_from_row(row) for row in rows)
+        page = records[:limit]
+        next_cursor = page[-1].id if len(records) > limit else None
+        return page, next_cursor
+
+
+def _audit_event_from_row(row: Sequence[Any]) -> AuditEventRow:
+    return AuditEventRow(
+        id=cast(UUID, row[0]),
+        case_id=cast(UUID, row[1]),
+        case_version=int(row[2]),
+        event_type=str(row[3]),
+        actor_type=str(row[4]),
+        actor_id=cast("UUID | None", row[5]),
+        artifact_type=str(row[6]),
+        artifact_id=cast(UUID, row[7]),
+        event_data=cast(Mapping[str, object], row[8]),
+        created_at=cast(datetime, row[9]),
+    )
 
 
 def _gate(row: Sequence[Any]) -> GateRecord:
