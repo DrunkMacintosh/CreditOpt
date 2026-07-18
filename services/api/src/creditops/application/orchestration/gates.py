@@ -90,6 +90,42 @@ ALL_GATES: tuple[GateType, ...] = (
     GateType.HG_UNDERWRITING_ASSESSMENT_REVIEWED,
     GateType.HG_LEGAL_ASSESSMENT_REVIEWED,
     GateType.HG_MAKER_SUBMISSION_CONFIRMED,
+    # Stage 7 (master design section 5 giai đoạn 7): the credit-notification
+    # approval gate.  It takes the SAME stored-status-only, default-OPEN path
+    # below as the other HG_ gates -- the engine never satisfies it; only an
+    # authorized human (api/notifications.py approve) can.  It is intentionally
+    # NOT a required_gate on any task-graph node
+    # (application/orchestration/graph.py); it records/surfaces human approval
+    # state and gates the (mock) delivery, never an existing node.  PROPOSED
+    # synthetic gate name; no official SHB mapping.
+    GateType.HG_CREDIT_NOTIFICATION_APPROVED,
+    # Stage 9 (master design section 5 giai đoạn 9): the per-asset security-
+    # perfection confirmation gate.  Same stored-status-only, default-OPEN path as
+    # the other HG_ gates -- the engine never satisfies it; only an authorized
+    # independent OPS checker (api/security_interests.py confirm) can, and only
+    # once every interest has >=1 requirement and every requirement is
+    # COMPLETED / NOT_REQUIRED_BY_HUMAN with evidence.  Intentionally NOT a
+    # required_gate on any task-graph node (application/orchestration/graph.py);
+    # PROPOSED synthetic gate name, no official SHB mapping.
+    GateType.HG_SECURITY_PERFECTION_CONFIRMED,
+    # Stage 10 (master design section 5 giai đoạn 10): the disbursement-conditions
+    # confirmation gate.  It takes the SAME stored-status-only, default-OPEN path
+    # below as the other HG_ gates -- the engine never satisfies it; only an
+    # authorized independent OPS checker (api/conditions.py confirm) can, and
+    # only once every condition is VERIFIED / WAIVED_BY_HUMAN /
+    # NOT_APPLICABLE_BY_HUMAN.  Intentionally NOT a required_gate on any
+    # task-graph node (application/orchestration/graph.py); PROPOSED synthetic
+    # gate name, no official SHB mapping.
+    GateType.HG_DISBURSEMENT_CONDITIONS_CONFIRMED,
+    # Stage 8 (master design section 5 giai đoạn 8): the three contract signing
+    # gates.  Each takes the SAME stored-status-only, default-OPEN path below --
+    # the engine never satisfies them; only an authorized human (api/
+    # contract_packages.py approve / signature-authority / sign) can.  Like the
+    # other HG_ gates they are NOT required_gate on any task-graph node, so adding
+    # them here records/surfaces their state without blocking any existing node.
+    GateType.HG_CONTRACT_PACKAGE_APPROVED,
+    GateType.HG_SIGNATURE_AUTHORITY_CONFIRMED,
+    GateType.HG_CONTRACTS_SIGNED,
 )
 
 

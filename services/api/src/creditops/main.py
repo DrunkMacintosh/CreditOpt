@@ -13,6 +13,8 @@ from starlette.types import ExceptionHandler
 from creditops.api.audit import router as audit_router
 from creditops.api.auth import JwtVerifier, RemoteJwksKeyResolver
 from creditops.api.cases import router as cases_router
+from creditops.api.conditions import router as conditions_router
+from creditops.api.contract_packages import router as contract_packages_router
 from creditops.api.credit_decisions import router as credit_decisions_router
 from creditops.api.credit_ops import router as credit_ops_router
 from creditops.api.errors import (
@@ -26,9 +28,11 @@ from creditops.api.financing import router as financing_router
 from creditops.api.gap_requests import router as gap_requests_router
 from creditops.api.intake import router as intake_router
 from creditops.api.legal import router as legal_router
+from creditops.api.notifications import router as notifications_router
 from creditops.api.orchestration import router as orchestration_router
 from creditops.api.prospects import router as prospects_router
 from creditops.api.risk_review import router as risk_review_router
+from creditops.api.security_interests import router as security_interests_router
 from creditops.api.tasks import router as tasks_router
 from creditops.api.underwriting import router as underwriting_router
 from creditops.api.uploads import router as uploads_router
@@ -38,6 +42,12 @@ from creditops.application.unit_of_work import UnitOfWorkFactory
 from creditops.config import Settings
 from creditops.infrastructure.gcp.cloud_run_dispatcher import CloudRunDispatcher
 from creditops.infrastructure.gcp.metadata_token import MetadataTokenProvider
+from creditops.infrastructure.postgres.conditions import (
+    PostgresConditionLedgerRepository,
+)
+from creditops.infrastructure.postgres.contract_packages import (
+    PostgresContractPackageRepository,
+)
 from creditops.infrastructure.postgres.credit_decisions import (
     PostgresCreditDecisionRepository,
 )
@@ -51,12 +61,18 @@ from creditops.infrastructure.postgres.gap_request_batches import (
 )
 from creditops.infrastructure.postgres.intake import PostgresIntakeRepository
 from creditops.infrastructure.postgres.legal import PostgresLegalRepository
+from creditops.infrastructure.postgres.notifications import (
+    PostgresNotificationRepository,
+)
 from creditops.infrastructure.postgres.orchestration import (
     PostgresOrchestrationRepository,
 )
 from creditops.infrastructure.postgres.prospects import PostgresProspectRepository
 from creditops.infrastructure.postgres.repositories import PostgresUnitOfWorkFactory
 from creditops.infrastructure.postgres.risk_review import PostgresRiskReviewRepository
+from creditops.infrastructure.postgres.security_interests import (
+    PostgresSecurityInterestRepository,
+)
 from creditops.infrastructure.postgres.session import PsycopgConnectionFactory
 from creditops.infrastructure.postgres.tasks import PostgresTaskRepository
 from creditops.infrastructure.postgres.underwriting import (
@@ -201,6 +217,26 @@ def create_app(
         if database_connection_factory is not None
         else None
     )
+    application.state.notification_repository = (
+        PostgresNotificationRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
+    application.state.condition_ledger_repository = (
+        PostgresConditionLedgerRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
+    application.state.security_interest_repository = (
+        PostgresSecurityInterestRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
+    application.state.contract_package_repository = (
+        PostgresContractPackageRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
     application.state.worker_dispatcher = (
         CloudRunDispatcher(
             project_id=cast(str, configured.gcp_project_id),
@@ -255,6 +291,10 @@ def create_app(
     application.include_router(financing_router)
     application.include_router(prospects_router)
     application.include_router(credit_decisions_router)
+    application.include_router(notifications_router)
+    application.include_router(conditions_router)
+    application.include_router(security_interests_router)
+    application.include_router(contract_packages_router)
     return application
 
 

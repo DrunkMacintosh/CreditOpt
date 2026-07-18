@@ -52,6 +52,10 @@ class GateType(StrEnum):
       underwriter/maker submits the credit proposal (master design section 5
       giai đoạn 5).  PROPOSED synthetic gate names; no official SHB mapping.
       Human-satisfied only, like G2/G3/G4.
+    - ``HG_CREDIT_NOTIFICATION_APPROVED`` stage-7 human approval of the credit
+      notification draft before its (mock) delivery (master design section 5
+      giai đoạn 7).  PROPOSED synthetic gate name; no official SHB mapping.
+      Human-satisfied only, like G2/G3/G4.
 
     Only ``G1`` may be satisfied by the engine (from the intake handoff).  Every
     other gate is satisfied exclusively by an authorized human disposition; no
@@ -72,6 +76,12 @@ class GateType(StrEnum):
     HG_UNDERWRITING_ASSESSMENT_REVIEWED = "HG_UNDERWRITING_ASSESSMENT_REVIEWED"
     HG_LEGAL_ASSESSMENT_REVIEWED = "HG_LEGAL_ASSESSMENT_REVIEWED"
     HG_MAKER_SUBMISSION_CONFIRMED = "HG_MAKER_SUBMISSION_CONFIRMED"
+    HG_CREDIT_NOTIFICATION_APPROVED = "HG_CREDIT_NOTIFICATION_APPROVED"
+    HG_SECURITY_PERFECTION_CONFIRMED = "HG_SECURITY_PERFECTION_CONFIRMED"
+    HG_DISBURSEMENT_CONDITIONS_CONFIRMED = "HG_DISBURSEMENT_CONDITIONS_CONFIRMED"
+    HG_CONTRACT_PACKAGE_APPROVED = "HG_CONTRACT_PACKAGE_APPROVED"
+    HG_SIGNATURE_AUTHORITY_CONFIRMED = "HG_SIGNATURE_AUTHORITY_CONFIRMED"
+    HG_CONTRACTS_SIGNED = "HG_CONTRACTS_SIGNED"
 
 
 class GateStatus(StrEnum):

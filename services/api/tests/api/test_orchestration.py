@@ -282,7 +282,14 @@ def test_status_reports_plan_tasks_gates_and_no_capability_leak(
     assert readiness["CREDIT_UNDERWRITING"] == "IN_PROGRESS"
     assert readiness["INDEPENDENT_RISK_REVIEW"] == "BLOCKED"
     assert body["deadlock"] is None
-    assert "approve" not in response.text.lower()
+    # The neutral status view must not leak an action capability (e.g. an
+    # "approve"/"reject" affordance).  Gate TYPE names are recorded human state,
+    # not capabilities, so they are excluded from the scan -- a gate such as
+    # HG_CREDIT_NOTIFICATION_APPROVED legitimately ends in "_APPROVED".
+    scannable = response.text.lower()
+    for gate_type in gate_status:
+        scannable = scannable.replace(gate_type.lower(), "")
+    assert "approve" not in scannable
 
 
 def test_advance_is_a_202_idempotent_kickoff(
