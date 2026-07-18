@@ -14,7 +14,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tiếp nhận hồ sơ tín dụng | SHB CreditOps EvidenceGraph",
+  title: "Tiếp nhận hồ sơ tín dụng | CreditOps EvidenceGraph",
   description: "Không gian chuẩn bị hồ sơ tín dụng doanh nghiệp có kiểm soát.",
 };
 
