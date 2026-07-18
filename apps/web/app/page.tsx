@@ -1,13 +1,15 @@
+"use client";
+
 import Link from "next/link";
-import React from "react";
+import React, { useCallback, useState } from "react";
 
 import styles from "./landing.module.css";
 
-export const metadata = {
-  title: "CreditOps EvidenceGraph — AI hỗ trợ chuẩn bị và phản biện hồ sơ",
-  description:
-    "Nền tảng evidence-first tổ chức hồ sơ cấp vốn lưu động SME thành một Credit Case Digital Twin có cấu trúc, phiên bản và chuỗi nguồn gốc. AI chuẩn bị và phản biện; con người quyết định.",
-};
+// The landing page's demo CTA needs client-side interactivity (mint a session,
+// then redirect using its response body), which requires this file to be a
+// Client Component — Next.js does not allow `export const metadata` from one,
+// so the page-specific <title>/description fall back to the root layout's
+// (app/layout.tsx) metadata instead of overriding it here.
 
 // The target provenance chain (docs/BANKING_WORKFLOW.md, README) — every
 // downstream artifact traces back to a document version and source region.
@@ -131,6 +133,39 @@ const ARCHITECTURE = [
 ];
 
 export default function Home() {
+  const [startingDemo, setStartingDemo] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
+
+  const startDemo = useCallback(async () => {
+    setDemoError(null);
+    setStartingDemo(true);
+    try {
+      const response = await fetch("/api/demo-session", {
+        method: "POST",
+        headers: { accept: "application/json" },
+        credentials: "include",
+        cache: "no-store",
+      });
+      const body: unknown = await response.json().catch(() => null);
+      const caseId =
+        response.ok &&
+        typeof body === "object" &&
+        body !== null &&
+        typeof (body as { caseId?: unknown }).caseId === "string"
+          ? (body as { caseId: string }).caseId
+          : null;
+      if (caseId === null) {
+        throw new Error("DEMO_SESSION_FAILED");
+      }
+      window.location.assign(`/ho-so/${encodeURIComponent(caseId)}/tiep-nhan`);
+    } catch {
+      setStartingDemo(false);
+      setDemoError(
+        "Không thể khởi tạo phiên demo lúc này. Vui lòng thử lại sau ít phút.",
+      );
+    }
+  }, []);
+
   return (
     <div className={styles.page}>
       <a className="skip-link" href="#noi-dung-chinh">
@@ -178,8 +213,18 @@ export default function Home() {
                 được — thay vì một cuộc hội thoại khó lần lại nguồn.
               </p>
               <div className={styles.heroCtas}>
-                <Link
+                <button
                   className={`button ${styles.ctaPrimary}`}
+                  disabled={startingDemo}
+                  onClick={() => void startDemo()}
+                  type="button"
+                >
+                  {startingDemo
+                    ? "Đang khởi tạo phiên demo…"
+                    : "Trải nghiệm demo (dữ liệu tổng hợp)"}
+                </button>
+                <Link
+                  className={`button ${styles.ctaSecondary}`}
                   href="/cong-viec"
                 >
                   Vào hàng việc của tôi
@@ -191,6 +236,16 @@ export default function Home() {
                   Danh sách hồ sơ
                 </Link>
               </div>
+              {demoError ? (
+                <div className="state-panel" role="alert">
+                  <p>{demoError}</p>
+                </div>
+              ) : null}
+              <p className={styles.heroLede}>
+                Phiên demo tạo một hồ sơ tín dụng tổng hợp mới và đưa bạn thẳng
+                vào bước tiếp nhận tài liệu — dữ liệu hoàn toàn tổng hợp, không
+                phải khách hàng thật.
+              </p>
             </div>
 
             <aside

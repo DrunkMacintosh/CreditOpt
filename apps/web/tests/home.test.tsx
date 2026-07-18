@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import Home from "../app/page";
 
@@ -64,4 +65,84 @@ it("makes no false SHB-approval or production-readiness claim", () => {
   const text = document.body.textContent ?? "";
   expect(text).not.toContain("được SHB phê duyệt");
   expect(text).not.toContain("production-ready");
+});
+
+describe("demo session CTA", () => {
+  const DEMO_CTA = "Trải nghiệm demo (dữ liệu tổng hợp)";
+  const originalLocation = window.location;
+  let assignMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    assignMock = vi.fn();
+    // jsdom's window.location.assign is non-configurable; replace the whole
+    // location object for the duration of this suite instead of spying on it.
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign: assignMock },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the existing CTAs alongside the new primary demo CTA", () => {
+    render(<Home />);
+    expect(screen.getByRole("button", { name: DEMO_CTA })).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Vào hàng việc của tôi" }),
+    ).toHaveAttribute("href", "/cong-viec");
+    expect(
+      screen.getByRole("link", { name: "Danh sách hồ sơ" }),
+    ).toHaveAttribute("href", "/ho-so");
+  });
+
+  it("mints a demo session and redirects into the working app with its caseId", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ caseId: "case-42" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<Home />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: DEMO_CTA }));
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/demo-session",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+    expect(assignMock).toHaveBeenCalledWith("/ho-so/case-42/tiep-nhan");
+  });
+
+  it("shows an honest error and never redirects when the demo session cannot be minted", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: "UPSTREAM_UNAVAILABLE" }), {
+        status: 502,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<Home />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: DEMO_CTA }));
+    });
+
+    expect(
+      await screen.findByText(
+        "Không thể khởi tạo phiên demo lúc này. Vui lòng thử lại sau ít phút.",
+      ),
+    ).toBeVisible();
+    expect(assignMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: DEMO_CTA })).not.toBeDisabled();
+  });
 });

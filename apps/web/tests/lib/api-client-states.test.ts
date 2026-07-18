@@ -118,9 +118,8 @@ describe("getVietnameseApiError: 404", () => {
   });
 });
 
-describe("getVietnameseApiError: existing statuses are unchanged", () => {
+describe("getVietnameseApiError: status messages stay stable", () => {
   it.each([
-    [401, "Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."],
     [403, "Bạn không có quyền thực hiện thao tác này trên hồ sơ."],
     [409, "Dữ liệu đã thay đổi hoặc thao tác bị trùng. Vui lòng tải lại."],
     [413, "Tài liệu vượt quá dung lượng được phép."],
@@ -129,6 +128,15 @@ describe("getVietnameseApiError: existing statuses are unchanged", () => {
   ])("keeps the %i message stable", (status, message) => {
     const error = new ApiClientError(status, "CODE", "", false);
     expect(getVietnameseApiError(error)).toBe(message);
+  });
+
+  // 401 addresses an anonymous demo judge, not an account holder: there is no
+  // login to return to, only a fresh demo session from the landing page.
+  it("tells an anonymous demo judge to restart the demo, not to log back in", () => {
+    const error = new ApiClientError(401, "CODE", "", false);
+    expect(getVietnameseApiError(error)).toBe(
+      "Phiên demo đã hết hạn. Vui lòng quay lại trang chủ và bắt đầu lại demo.",
+    );
   });
 });
 
