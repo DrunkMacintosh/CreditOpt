@@ -127,16 +127,27 @@ select lives_ok(
   'the assigned officer can upload to the exact active-intent path'
 );
 
-select throws_ok(
-  $$
-    update storage.objects
-    set metadata = '{"attempted_upsert": true}'::jsonb
+-- storage.objects exposes an INSERT and a SELECT policy but deliberately no
+-- UPDATE policy, so an authenticated UPDATE matches zero rows and mutates
+-- nothing — a no-op denial rather than a privilege error.  (The now-existing
+-- object row means this is a real RLS test; before the upload_intents grant
+-- fix the insert failed and this update trivially matched nothing.)  The
+-- update runs as a top-level statement — a data-modifying CTE may not be
+-- nested inside the is() subquery — then the assertion proves nothing changed.
+update storage.objects
+set metadata = '{"attempted_upsert": true}'::jsonb
+where bucket_id = 'creditops-incoming'
+  and name = 'incoming/10000000-0000-0000-0000-000000000001/20000000-0000-0000-0000-000000000001';
+
+select is(
+  (
+    select metadata ->> 'attempted_upsert'
+    from storage.objects
     where bucket_id = 'creditops-incoming'
       and name = 'incoming/10000000-0000-0000-0000-000000000001/20000000-0000-0000-0000-000000000001'
-  $$,
-  '42501',
+  ),
   null,
-  'authenticated object update is denied, independent of policy naming'
+  'authenticated object update changes no row: RLS exposes no update policy'
 );
 
 select throws_ok(
