@@ -29,6 +29,7 @@ from creditops.api.risk_review import router as risk_review_router
 from creditops.api.tasks import router as tasks_router
 from creditops.api.underwriting import router as underwriting_router
 from creditops.api.uploads import router as uploads_router
+from creditops.api.work_items import router as work_items_router
 from creditops.application.ports.storage import StoragePort
 from creditops.application.unit_of_work import UnitOfWorkFactory
 from creditops.config import Settings
@@ -53,6 +54,7 @@ from creditops.infrastructure.postgres.tasks import PostgresTaskRepository
 from creditops.infrastructure.postgres.underwriting import (
     PostgresUnderwritingRepository,
 )
+from creditops.infrastructure.postgres.work_items import PostgresWorkItemRepository
 from creditops.infrastructure.supabase.queue import AGENT_TASK_QUEUE_NAME, SupabaseQueue
 from creditops.infrastructure.supabase.storage import SupabaseStorage
 from creditops.observability import configure_structured_logging
@@ -171,6 +173,11 @@ def create_app(
         if database_connection_factory is not None
         else None
     )
+    application.state.work_item_repository = (
+        PostgresWorkItemRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
     application.state.worker_dispatcher = (
         CloudRunDispatcher(
             project_id=cast(str, configured.gcp_project_id),
@@ -221,6 +228,7 @@ def create_app(
     application.include_router(audit_router)
     application.include_router(intake_router)
     application.include_router(evidence_review_router)
+    application.include_router(work_items_router)
     return application
 
 
