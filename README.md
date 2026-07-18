@@ -32,6 +32,75 @@ CreditOps dùng nhiều vai trò khi mỗi vai trò có trách nhiệm, context,
 
 Các role không được phép tự xóa disagreement, tự đóng gap trọng yếu hoặc tự chuyển một output của model thành quyết định. Material calculations, state transitions, authorization, idempotency, version fence và persistence thuộc deterministic engine. Output không đủ schema, thiếu evidence, có hành vi vượt thẩm quyền hoặc yêu cầu approve, reject, waiver hay disbursement phải bị từ chối hoặc đi vào manual review. Separation of duties vì vậy được hiện diện trong product contract, không chỉ trong sơ đồ kiến trúc.
 
+### Sáu vai trò, sáu hợp đồng thẩm quyền
+
+Sáu agent là vai trò logic ở tầng ứng dụng, không phải sáu model hoặc sáu service phải chạy độc lập. Một endpoint inference đã qua benchmark có thể phục vụ nhiều role; sự chuyên môn hóa đến từ instruction, context, tool, permission và output schema khác nhau.
+
+| Vai trò | Trách nhiệm | Output có thể review | Ranh giới không được vượt qua |
+|---|---|---|---|
+| Case Orchestrator | Đọc case state, xác định task ready, blocked hoặc stale và route công việc | Task plan, dependency state, escalation | Không tự làm phân tích chuyên môn hoặc quyết định tín dụng |
+| Relationship and Intake | Cấu trúc nhu cầu vốn, gắn tài liệu, phát hiện thiếu/trùng/xung đột ban đầu | Structured intake, candidate fact, initial gap | Không bịa dữ kiện hoặc tự gửi yêu cầu khách hàng |
+| Credit Underwriting | Chuẩn bị phân tích business, financial, cash flow, working capital và cấu trúc đề xuất | Finding, calculation, risk, mitigant, assumption | Không phê duyệt/từ chối hoặc dùng LLM thay phép tính deterministic |
+| Legal, Compliance and Collateral | Rà soát tư cách, thẩm quyền, ownership, controlled check, policy và tài sản | Issue có evidence, citation, possible exception | Không kết luận pháp lý cuối cùng, cáo buộc sai phạm hoặc định giá chỉ bằng LLM |
+| Independent Risk Review | Thách thức maker, tìm omission, assumption yếu, mitigant chưa đủ và gap chưa đóng | Challenge, request for evidence/change/manual review | Không vừa là maker vừa tự clearance, không phê duyệt/từ chối |
+| Credit Operations | Kiểm tra package, gom provenance và chuẩn bị draft memo/proposed action | Draft case package cho người xem xét | Không thực thi hành động nhạy cảm khi chưa có authorization |
+
+Không role nào được mở rộng quyền qua Orchestrator, và rerun không được làm gap hoặc challenge biến mất khỏi audit history. Điều này buộc sản phẩm ghi nhận disagreement như một phần của case, thay vì để agent có câu trả lời “mượt hơn” thắng agent khác.
+
+### Evidence Gap Resolution: thiếu sót cũng là một artifact
+
+Evidence Gap Resolution không là một chatbot phụ. Đây là capability dùng chung để biến evidence thiếu, mâu thuẫn, stale, khó đọc, low-confidence hoặc chưa đủ hỗ trợ cho kết luận thành workflow state có owner và lịch sử. Một gap tốt cho biết evidence hiện có và vùng nguồn, thông tin cần làm rõ, lý do, task/finding/calculation/memo section bị ảnh hưởng, mức độ `BLOCKING`, `CONDITIONAL` hoặc `CLARIFICATION`, tài liệu tối thiểu được gợi ý, approval status và resolution evidence.
+
+Các mức trên là ngôn ngữ vận hành của sản phẩm, không phải phân loại chính thức của SHB. Gap không phải bằng chứng gian lận hoặc vi phạm. AI có thể đề xuất tài liệu và rationale, nhưng nhân sự có thẩm quyền phải duyệt trước khi yêu cầu được gửi cho khách hàng.
+
+### AI diễn giải; hệ thống xác định và con người quyết định
+
+| Phù hợp cho AI có giới hạn | Phải thuộc deterministic tool/service hoặc con người |
+|---|---|
+| Diễn giải ngữ cảnh tài liệu, chuẩn bị analysis có citation, phát hiện candidate conflict/gap | Phép tính, reconciliation, threshold, authorization, role/case access và state transition |
+| Giải thích uncertainty, alternative interpretation, challenge và draft cho reviewer | Controlled KYC/AML/watchlist/CIC/collateral lookup, database write, idempotency, immutable version và audit event |
+| Gợi ý bước tiếp theo | Credit decision, exception disposition, customer communication approval, signing, disbursement và mutation hệ thống nhạy cảm |
+
+FPT chỉ thực hiện inference. Model response không trở thành case truth, quyền hạn, tool execution hay approval record; gateway kiểm tra schema, giới hạn payload và từ chối trường quyết định bị cấm trước khi output được dùng trong workflow.
+
+## EvidenceGraph: mỗi kết luận đều có đường về nguồn
+
+```mermaid
+flowchart LR
+  D[Document version] --> S[Source region]
+  S --> CF[Candidate fact]
+  CF -->|Human confirmation| F[Confirmed fact]
+  F --> C[Deterministic calculation]
+  F --> A[Specialist assessment]
+  C --> A
+  A --> R[Finding / risk]
+  R --> H[Handoff package]
+  G[Evidence gap] -.blocks or conditions.-> A
+  X[Independent challenge] -.questions.-> R
+  N[New document version] --> ST[Stale dependency]
+  ST -.re-runs targeted task.-> A
+```
+
+Graph này là cơ chế để case giữ được ngữ cảnh khi nhiều người và nhiều AI role cùng tham gia. Tài liệu không đi thẳng thành kết luận; nó được chia thành vùng nguồn, sinh candidate fact, được xác nhận khi cần và mới đi vào phép tính hay assessment. Gap và challenge không bị giấu trong comment: chúng tồn tại như node có quan hệ với conclusion bị ảnh hưởng. Khi một document version mới đến, dependency graph chỉ ra artifact nào cần cập nhật, giữ audit trail nhất quán và tránh rerun toàn bộ case.
+
+## Workflow: từ tài liệu đến quyết định của con người
+
+```mermaid
+flowchart LR
+  A[Tiếp nhận nhu cầu vốn] --> B[Upload và xác minh tài liệu]
+  B --> C[Parse, extract, classify]
+  C --> D[Fact review và evidence gaps]
+  D --> E[Underwriting: dòng tiền, cấu trúc, mitigant]
+  E --> F[Legal, Compliance và Collateral review]
+  F --> G[Independent Risk challenge]
+  G --> H[Credit Operations package]
+  H --> I{Human decision}
+  I -->|Cần bổ sung| D
+  I -->|Đủ điều kiện review| J[Authorized human action]
+```
+
+Workflow không giả định đường đi thẳng. Một conflict có thể đưa case về bước review facts; một gap có thể mở task cho đúng owner; một risk challenge giữ assessment ở trạng thái chưa đóng cho đến khi maker phản hồi và người có thẩm quyền ghi nhận disposition. Điều này biến sự phối hợp đa vai trò thành một quy trình có checkpoint, handoff và accountability thay vì chuỗi tin nhắn giữa các agent.
+
 ## Kiến trúc phục vụ khả năng mở rộng
 
 CreditOps tách trải nghiệm người dùng, workflow authority, durable state và inference thành các ranh giới độc lập. Frontend tiếng Việt chạy trên Vercel. FastAPI trên Cloud Run giữ logic nghiệp vụ, human gates và orchestration; worker xử lý tài liệu bất đồng bộ. Supabase giữ Postgres, Queue, private Storage, retrieval metadata và pgvector. FPT AI Factory chỉ thực hiện inference qua provider-neutral gateway.
@@ -39,6 +108,32 @@ CreditOps tách trải nghiệm người dùng, workflow authority, durable stat
 Tách lớp như vậy giúp API và worker scale độc lập theo lượng case, tài liệu và tác vụ inference. Browser không cầm service-role secret hoặc điều phối workflow. Upload đi qua backend-created intent, rồi được xác minh trước khi thành document version. Queue chỉ vận chuyển identifier; lease, checkpoint, retry, redelivery, idempotency và stale-version protection giúp xử lý lại an toàn khi worker lỗi hoặc tài liệu được cập nhật. Model, embedding hoặc reranker có thể được thay sau benchmark mà không đổi source of truth hay business contract.
 
 Đây là hướng triển khai thực tế cho ngân hàng: bắt đầu bằng evidence-and-control layer nằm giữa document AI và workflow tín dụng có thẩm quyền, sau đó mở rộng theo giai đoạn thay vì thay thế LOS, core banking hoặc professional judgment. Giá trị cần được chứng minh qua turnaround time, số vòng bổ sung, citation accuracy, gap recall, chất lượng phản biện, chi phí mỗi case và số rerun không cần thiết — không phải một con số ROI tự tuyên bố.
+
+## Công nghệ đội sử dụng
+
+| Lớp | Công nghệ | Vai trò trong CreditOps |
+|---|---|---|
+| Product UI | Next.js, React, TypeScript, Vercel | Giao diện tiếng Việt cho case, evidence, task, review và handoff; frontend chỉ gọi backend, không nắm đặc quyền. |
+| Application authority | Python, FastAPI, Pydantic, Cloud Run | Xác thực contract, kiểm tra quyền, orchestration, human gate và deterministic business logic. |
+| Durable state | Supabase PostgreSQL | Lưu Credit Case Digital Twin, EvidenceGraph, workflow state, audit record, permission metadata và version history. |
+| Asynchronous processing | Supabase Queues, Cloud Run worker | Điều phối xử lý tài liệu bằng identifier, lease, checkpoint, retry, redelivery và idempotency. |
+| File và retrieval | Supabase Storage, pgvector, full-text search | Lưu immutable document/derived artifact; truy xuất evidence có scope theo case, version và quyền truy cập. |
+| AI capability | FPT AI Factory qua provider-neutral gateway | Reasoning, document extraction, vision, embedding và reranking được chọn theo benchmark; model không sở hữu state hay quyền thao tác. |
+| Delivery controls | Docker, Terraform, GitHub Actions | Đóng gói, migration, triển khai theo hạ tầng khai báo và kiểm tra pipeline có thể tái tạo. |
+
+```mermaid
+flowchart LR
+  U[Bank user] --> W[Next.js / Vercel]
+  W --> API[FastAPI / Cloud Run]
+  API <--> DB[Supabase Postgres]
+  API --> Q[Supabase Queue]
+  Q --> WK[Cloud Run worker]
+  WK <--> ST[Private Storage + pgvector]
+  WK --> GW[Provider-neutral gateway]
+  GW --> AI[FPT AI Factory]
+```
+
+Sơ đồ công nghệ thể hiện một nguyên tắc vận hành: state, quyền hạn và audit nằm ngoài model. AI có thể thay đổi theo benchmark, nhưng case state, evidence lineage, authorization và human decision không thay đổi theo một model hay provider cụ thể. Điều đó tạo nền cho việc scale theo tải xử lý, thay thế capability khi có số liệu tốt hơn và mở rộng workflow mà không làm mất kiểm soát.
 
 ## Cách CreditOps tạo bằng chứng cho bài thi
 
