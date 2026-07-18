@@ -20,6 +20,7 @@ from creditops.api.errors import (
 )
 from creditops.api.orchestration import router as orchestration_router
 from creditops.api.tasks import router as tasks_router
+from creditops.api.underwriting import router as underwriting_router
 from creditops.api.uploads import router as uploads_router
 from creditops.application.ports.storage import StoragePort
 from creditops.application.unit_of_work import UnitOfWorkFactory
@@ -30,6 +31,9 @@ from creditops.infrastructure.postgres.orchestration import (
 from creditops.infrastructure.postgres.repositories import PostgresUnitOfWorkFactory
 from creditops.infrastructure.postgres.session import PsycopgConnectionFactory
 from creditops.infrastructure.postgres.tasks import PostgresTaskRepository
+from creditops.infrastructure.postgres.underwriting import (
+    PostgresUnderwritingRepository,
+)
 from creditops.infrastructure.supabase.queue import AGENT_TASK_QUEUE_NAME, SupabaseQueue
 from creditops.infrastructure.supabase.storage import SupabaseStorage
 from creditops.observability import configure_structured_logging
@@ -113,6 +117,11 @@ def create_app(
         if database_connection_factory is not None
         else None
     )
+    application.state.underwriting_repository = (
+        PostgresUnderwritingRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
 
     @application.middleware("http")
     async def assign_correlation_id(
@@ -139,6 +148,7 @@ def create_app(
     application.include_router(uploads_router)
     application.include_router(tasks_router)
     application.include_router(orchestration_router)
+    application.include_router(underwriting_router)
     return application
 
 
