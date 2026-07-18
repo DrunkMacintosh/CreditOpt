@@ -13,6 +13,7 @@ from starlette.types import ExceptionHandler
 from creditops.api.audit import router as audit_router
 from creditops.api.auth import JwtVerifier, RemoteJwksKeyResolver
 from creditops.api.cases import router as cases_router
+from creditops.api.credit_decisions import router as credit_decisions_router
 from creditops.api.credit_ops import router as credit_ops_router
 from creditops.api.errors import (
     ApiException,
@@ -37,6 +38,9 @@ from creditops.application.unit_of_work import UnitOfWorkFactory
 from creditops.config import Settings
 from creditops.infrastructure.gcp.cloud_run_dispatcher import CloudRunDispatcher
 from creditops.infrastructure.gcp.metadata_token import MetadataTokenProvider
+from creditops.infrastructure.postgres.credit_decisions import (
+    PostgresCreditDecisionRepository,
+)
 from creditops.infrastructure.postgres.credit_ops import PostgresCreditOpsRepository
 from creditops.infrastructure.postgres.evidence_review import (
     PostgresEvidenceReviewRepository,
@@ -192,6 +196,11 @@ def create_app(
         if database_connection_factory is not None
         else None
     )
+    application.state.credit_decision_repository = (
+        PostgresCreditDecisionRepository(database_connection_factory)
+        if database_connection_factory is not None
+        else None
+    )
     application.state.worker_dispatcher = (
         CloudRunDispatcher(
             project_id=cast(str, configured.gcp_project_id),
@@ -245,6 +254,7 @@ def create_app(
     application.include_router(work_items_router)
     application.include_router(financing_router)
     application.include_router(prospects_router)
+    application.include_router(credit_decisions_router)
     return application
 
 
