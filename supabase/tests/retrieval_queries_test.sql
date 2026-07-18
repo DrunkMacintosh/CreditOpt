@@ -139,7 +139,7 @@ values (
   '10000000-0000-0000-0000-0000000000f1', 1,
   '63000000-0000-0000-0000-0000000000f1', 1,
   0.42, 0.87,
-  'ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+  repeat('c', 64)
 );
 
 select is(
@@ -156,7 +156,7 @@ select throws_ok(
       '70000000-0000-0000-0000-0000000000f1',
       '10000000-0000-0000-0000-0000000000f1', 1,
       '63000000-0000-0000-0000-0000000000f1', 2, 0.1,
-      'ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+      repeat('c', 64)
     )$$,
   '23505',
   null,
