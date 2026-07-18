@@ -127,11 +127,20 @@ def test_endpoint_without_a_code_pinned_model_fails_closed() -> None:
         )
 
 
-def test_shipped_benchmark_registry_is_empty_until_a_run_is_recorded() -> None:
-    # No representative Vietnamese banking benchmark has been executed yet, so
-    # the committed registry must ship empty: every capability route stays
-    # DISABLED until a real benchmark-pass record is added in a reviewed change.
-    assert FPT_BENCHMARK_RECORDS == ()
+def test_committed_registry_activates_only_reasoning() -> None:
+    # A live 14/14 synthetic Vietnamese-banking holdout run was recorded for
+    # reasoning (DeepSeek-V4-Flash on mkp-api.fptcloud.com); every OTHER
+    # capability route stays DISABLED until its own reviewed pass record exists.
+    passed = {record.capability for record in FPT_BENCHMARK_RECORDS if record.passed}
+    assert passed == {"reasoning"}
+    reasoning = next(r for r in FPT_BENCHMARK_RECORDS if r.capability == "reasoning")
+    assert reasoning.model_id == "DeepSeek-V4-Flash"
+    assert reasoning.endpoint_id == "mkp-api.fptcloud.com"
+    assert reasoning.route_version == "fpt-route-v1"
+    assert reasoning.prompt_version == "intake-prompt-v1"
+    assert reasoning.schema_version == "intake-schema-v1"
+    assert reasoning.passed is True
+    assert reasoning.evidence_ref.startswith("docs/benchmarks/")
 
 
 def test_route_without_benchmark_pass_record_fails_closed() -> None:

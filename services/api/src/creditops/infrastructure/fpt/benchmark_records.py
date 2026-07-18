@@ -40,5 +40,21 @@ class FPTBenchmarkRecord(BaseModel):
     recorded_on: str = Field(min_length=10, max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
-#: No benchmark has been executed; every capability route stays DISABLED.
-FPT_BENCHMARK_RECORDS: tuple[FPTBenchmarkRecord, ...] = ()
+#: Committed benchmark-pass records. Each row activates exactly one capability
+#: route in ``FPTCatalog.from_configuration``; the evidence artefact lives under
+#: ``docs/benchmarks/``. Reasoning was recorded from a live 14/14 run of the
+#: synthetic Vietnamese-banking holdout against DeepSeek-V4-Flash on
+#: FPT AI Factory (2026-07-18); see ``docs/DECISION_LOG.md``.
+FPT_BENCHMARK_RECORDS: tuple[FPTBenchmarkRecord, ...] = (
+    FPTBenchmarkRecord(
+        capability="reasoning",
+        model_id="DeepSeek-V4-Flash",
+        endpoint_id="mkp-api.fptcloud.com",
+        route_version="fpt-route-v1",
+        prompt_version="intake-prompt-v1",
+        schema_version="intake-schema-v1",
+        passed=True,
+        evidence_ref="docs/benchmarks/reasoning-DeepSeek-V4-Flash-evidence.md",
+        recorded_on="2026-07-18",
+    ),
+)

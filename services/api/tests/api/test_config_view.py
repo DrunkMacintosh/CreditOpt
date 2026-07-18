@@ -148,7 +148,7 @@ def test_role_set_does_not_drift_from_cases_role_usage() -> None:
     assert CASE_PARTICIPANT_ROLES <= set(SYNTHETIC_CASE_ROLE_SET)
 
 
-def test_fpt_catalog_state_is_truthful_and_benchmark_absent_is_false(
+def test_fpt_catalog_state_is_truthful_only_reasoning_passed(
     client: TestClient, signing_key: rsa.RSAPrivateKey
 ) -> None:
     catalog = client.get(
@@ -162,10 +162,12 @@ def test_fpt_catalog_state_is_truthful_and_benchmark_absent_is_false(
     # Pinned model ids mirror FPT_MODEL_CATALOG; unpinned capabilities are null.
     for capability, entry in by_capability.items():
         assert entry["pinnedModelId"] == FPT_MODEL_CATALOG.get(capability)
-        # The benchmark registry is empty, so every capability must report false.
-        assert entry["benchmarkPassed"] is False
+        # Only reasoning has a committed PASSED benchmark record; the rest report
+        # false and stay DISABLED until their own reviewed record is added.
+        assert entry["benchmarkPassed"] is (capability == "reasoning")
 
-    assert FPT_BENCHMARK_RECORDS == ()  # guards the premise of the assertion above
+    passed = {record.capability for record in FPT_BENCHMARK_RECORDS if record.passed}
+    assert passed == {"reasoning"}  # guards the premise of the assertion above
 
 
 def test_payload_contains_no_secret_material(

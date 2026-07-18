@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import json
-import os
 import re
-import sys
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -160,12 +158,6 @@ class FPTClient:
             raise InferenceUnavailableError("FPT response was not JSON") from exc
         if not isinstance(body, Mapping):
             raise InferenceUnavailableError("FPT response must be a JSON object")
-        if os.environ.get("FPT_DEBUG_RAW"):
-            # Diagnostic ONLY (gated off in the runtime); the benchmark sets this
-            # to capture the exact provider response shape. Synthetic content.
-            sys.stderr.write(
-                "FPT_DEBUG_RAW " + json.dumps(body, ensure_ascii=False)[:4000] + "\n"
-            )
         return body
 
     @staticmethod

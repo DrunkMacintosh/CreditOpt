@@ -46,10 +46,6 @@ jobs:
       FPT_REASONING_ENDPOINT_ID: ${{ vars.FPT_REASONING_ENDPOINT_ID }}
       FPT_EMBEDDING_ENDPOINT_URL: ${{ vars.FPT_EMBEDDING_ENDPOINT_URL }}
       FPT_EMBEDDING_ENDPOINT_ID: ${{ vars.FPT_EMBEDDING_ENDPOINT_ID }}
-      # TEMPORARY diagnostic: dump the raw provider response shape to the job log
-      # (synthetic content, no secrets) so the client contract can be verified.
-      # Remove once the FPT response contract is confirmed.
-      FPT_DEBUG_RAW: "1"
     steps:
       - name: Check out source
         uses: actions/checkout@v4
