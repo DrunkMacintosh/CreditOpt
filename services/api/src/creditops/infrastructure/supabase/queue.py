@@ -51,15 +51,21 @@ class SupabaseQueue(QueuePort):
     async def read_one(self, *, visibility_timeout_seconds: int) -> QueueMessage | None:
         if visibility_timeout_seconds <= 0 or visibility_timeout_seconds > 86_400:
             raise QueueError("queue visibility timeout is outside the bounded contract")
+        # Select the columns by NAME in an explicit order.  pgmq.read returns
+        # (msg_id, read_ct, enqueued_at, vt, message[, headers]) -- ``vt`` comes
+        # BEFORE ``message``.  A prior ``select *`` with positional indices read
+        # ``vt`` (a timestamptz) as the message and raised "PGMQ message is not a
+        # JSON object" on live pgmq (verified 2026-07-19).  Naming the columns
+        # pins the contract regardless of the extension's column order.
         row = await self._fetchone(
-            "select * from pgmq.read(%s, %s, %s)",
+            "select msg_id, read_ct, enqueued_at, vt, message from pgmq.read(%s, %s, %s)",
             (self._queue_name, visibility_timeout_seconds, 1),
         )
         if row is None:
             return None
-        if len(row) < 4:
+        if len(row) < 5:
             raise QueueError("PGMQ read response is missing required columns")
-        raw_message = row[3]
+        raw_message = row[4]
         if not isinstance(raw_message, dict):
             raise QueueError("PGMQ message is not a JSON object")
         try:
@@ -67,7 +73,7 @@ class SupabaseQueue(QueuePort):
             message_id = int(row[0])
             read_count = int(row[1])
             enqueued_at = _datetime(row[2])
-            visible_at = _datetime(row[4]) if len(row) > 4 else enqueued_at
+            visible_at = _datetime(row[3])
         except (TypeError, ValueError) as exc:
             raise QueueError("PGMQ message does not match TaskEnvelopeV1") from exc
         return QueueMessage(message_id, read_count, enqueued_at, visible_at, envelope)
