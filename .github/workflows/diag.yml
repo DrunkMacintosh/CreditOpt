@@ -4,28 +4,35 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-
-env:
-  GCP_PROJECT_ID: project-95c75d11-bb31-4e18-8a9
-  GCP_REGION: asia-southeast1
 
 jobs:
   diag:
-    name: Read worker outcomes (read-only)
+    name: Read task failure reasons (read-only)
     runs-on: ubuntu-latest
     environment: staging
+    env:
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
     steps:
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOYER_SERVICE_ACCOUNT }}
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v3
-      - name: Worker run outcomes (reasons included)
+      - name: Query task state via session pooler (read-only)
         run: |
-          gcloud logging read 'resource.type=cloud_run_job AND resource.labels.job_name=creditops-worker AND jsonPayload.event=worker_run_outcome' \
-            --project="$GCP_PROJECT_ID" --limit=15 --freshness=2h \
-            --format='value(timestamp,jsonPayload.outcome,jsonPayload.taskId,jsonPayload.reason)'
+          set -uo pipefail
+          REGION=$(curl -sf -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF" | python3 -c "import json,sys; print(json.load(sys.stdin).get('region',''))")
+          echo "project region: $REGION"
+          Q1="select id, task_type, status, attempt_count, available_at, left(coalesce(failure_reason,''),300) as failure_reason from public.processing_tasks order by created_at desc limit 8;"
+          Q2="select msg_id, read_ct, vt, vt<=now() as visible_now from pgmq.q_creditops_document_tasks order by msg_id;"
+          Q3="select stage, count(*) from public.document_versions group by stage;"
+          Q4="select count(*) as candidates from public.candidate_facts;"
+          export PGPASSWORD="$SUPABASE_DB_PASSWORD"
+          for HOST in "aws-1-${REGION}.pooler.supabase.com" "aws-0-${REGION}.pooler.supabase.com"; do
+            for PORT in 5432 6543; do
+              if psql -h "$HOST" -p "$PORT" -U "postgres.${SUPABASE_PROJECT_REF}" -d postgres -c "select 1" >/dev/null 2>&1; then
+                echo "== connected via $HOST:$PORT =="
+                psql -h "$HOST" -p "$PORT" -U "postgres.${SUPABASE_PROJECT_REF}" -d postgres -P pager=off -c "$Q1" -c "$Q2" -c "$Q3" -c "$Q4"
+                exit 0
+              fi
+            done
+          done
+          echo "no pooler host reachable (region=$REGION)" >&2
+          exit 1
