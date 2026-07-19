@@ -43,9 +43,10 @@ def envelope() -> TaskEnvelopeV1:
 
 @pytest.mark.asyncio
 async def test_queue_reads_without_pop_and_archives_only_explicitly() -> None:
+    # Real pgmq.read column order: (msg_id, read_ct, enqueued_at, vt, message).
     connection = Connection(
         [
-            (42, 1, NOW, envelope().model_dump(mode="json"), NOW),
+            (42, 1, NOW, NOW, envelope().model_dump(mode="json")),
             (True,),
         ]
     )
@@ -61,8 +62,28 @@ async def test_queue_reads_without_pop_and_archives_only_explicitly() -> None:
 
 
 @pytest.mark.asyncio
+async def test_queue_reads_message_from_pgmq_vt_then_message_order() -> None:
+    # Regression for the live crash (2026-07-19): pgmq.read returns
+    # (msg_id, read_ct, enqueued_at, vt, message) -- vt BEFORE message. The
+    # adapter must read the message from row[4] and vt from row[3]; reading
+    # row[3] as the message surfaced "PGMQ message is not a JSON object".
+    vt = datetime(2026, 7, 19, 3, 0, tzinfo=UTC)
+    connection = Connection([(7, 2, NOW, vt, envelope().model_dump(mode="json"))])
+    queue = SupabaseQueue(connection)
+    message = await queue.read_one(visibility_timeout_seconds=300)
+    assert message is not None
+    assert message.message_id == 7
+    assert message.read_count == 2
+    assert message.visible_at == vt
+    assert message.envelope.task_id == TASK
+    # The query must name the columns (order-independent), never "select *".
+    assert "select *" not in connection.queries[0].lower()
+    assert "vt, message" in connection.queries[0].lower()
+
+
+@pytest.mark.asyncio
 async def test_queue_rejects_malformed_message_and_bounds_visibility() -> None:
-    connection = Connection([(42, 1, NOW, {"task_id": "not-a-uuid"}, NOW)])
+    connection = Connection([(42, 1, NOW, NOW, {"task_id": "not-a-uuid"})])
     queue = SupabaseQueue(connection)
     with pytest.raises(QueueError):
         await queue.read_one(visibility_timeout_seconds=300)
