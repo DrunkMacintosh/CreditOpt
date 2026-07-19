@@ -132,6 +132,11 @@ class SupabaseStorage(StoragePort):
         upload_url = payload.get("url") or payload.get("signedURL") or payload.get("signedUrl")
         if not isinstance(upload_url, str):
             raise StorageError("Storage authorization did not include an upload URL")
+        if upload_url.startswith("/object/"):
+            # The live Storage API returns the signed path relative to its own
+            # service root (``/storage/v1``), not the project root; re-anchor it
+            # so the strict binding check below still sees the full path.
+            upload_url = f"/storage/v1{upload_url}"
         resolved = urljoin(f"{self._base_url}/", upload_url)
         trusted = urlsplit(self._base_url)
         resolved_parts = urlsplit(resolved)
