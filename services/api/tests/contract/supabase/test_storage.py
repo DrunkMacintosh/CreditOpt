@@ -115,3 +115,58 @@ async def test_signed_url_for_a_different_object_is_rejected() -> None:
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
         )
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_signed_authorization_accepts_live_service_root_relative_url() -> None:
+    # Regression: the LIVE Storage API (observed 2026-07-18 against
+    # tosvjtnqmsbyjonjacsn.supabase.co) returns the signed url relative to its
+    # own service root — "/object/upload/sign/..." WITHOUT the "/storage/v1"
+    # prefix, plus a ?token= query. The adapter must re-anchor it, not reject
+    # Supabase's own valid response as untrusted.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "url": "/object/upload/sign/creditops-incoming/incoming/case/intent?token=tok123",
+                "token": "tok123",
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = SupabaseStorage(settings(), client=client)
+    result = await adapter.create_upload_authorization(
+        bucket_id="creditops-incoming",
+        object_key="incoming/case/intent",
+        content_type="application/pdf",
+        size_bytes=100,
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+    )
+    assert result.mode == "SIGNED"
+    assert result.upload_url.startswith(
+        "https://project.supabase.co/storage/v1/object/upload/sign/creditops-incoming/"
+    )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_service_root_relative_url_still_rejects_foreign_object() -> None:
+    # Re-anchoring must not weaken the binding check: a prefixless url that
+    # points at a DIFFERENT object is still rejected.
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"url": "/object/upload/sign/creditops-incoming/incoming/other?token=t"},
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = SupabaseStorage(settings(), client=client)
+    with pytest.raises(StorageError):
+        await adapter.create_upload_authorization(
+            bucket_id="creditops-incoming",
+            object_key="incoming/case/intent",
+            content_type="application/pdf",
+            size_bytes=100,
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        )
+    await client.aclose()
